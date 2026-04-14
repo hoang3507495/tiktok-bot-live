@@ -24,8 +24,7 @@ def keep_alive():
 # --- CẤU HÌNH BOT TELEGRAM & TIKTOK ---
 # Thay thông tin của bạn vào 3 dòng dưới đây
 TIKTOK_USERNAME = "jiang16430a" 
-TELEGRAM_TOKEN = "8701996946:AAHcxrWvB7C1t1QURjS1k4ibKxDUuNfJzuw
-"
+TELEGRAM_TOKEN = "8701996946:AAHcxrWvB7C1t1QURjS1k4ibKxDUuNfJzuw"
 TELEGRAM_CHAT_ID = "1882718625"
 
 client = TikTokLiveClient(unique_id=TIKTOK_USERNAME)
