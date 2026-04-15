@@ -66,11 +66,11 @@ async def start_tracking(username, loop):
     except:
         ACTIVE_CLIENTS.pop(username, None)
 
-# --- QUÉT LỆNH TELEGRAM ---
+
+# --- QUÉT LỆNH TELEGRAM (Bản sửa lỗi nhận diện nhầm) ---
 def tele_worker(loop):
     last_id = 0
-    # Thông báo khi hệ thống thực sự khởi động xong
-    send_tele("🚀 <b>Hệ thống Săn Rương đã Online!</b>\nGõ @tên_kênh để bắt đầu.")
+    send_tele("🚀 <b>Hệ thống đã sẵn sàng!</b>\n\n- Nhắn <code>@ten_kenh</code> để săn.\n- Nhắn <code>/list</code> để xem danh sách.")
     
     while True:
         try:
@@ -80,21 +80,26 @@ def tele_worker(loop):
                 for update in r["result"]:
                     last_id = update["update_id"]
                     if "message" in update and "text" in update["message"]:
-                        cmd = update["message"]["text"].strip()
+                        text = update["message"]["text"].strip()
                         
-                        if cmd.startswith("@") or (len(cmd) > 2 and " " not in cmd):
-                            target = cmd if cmd.startswith("@") else f"@{cmd}"
-                            send_tele(f"⏳ Đang kết nối tới {target}...")
-                            # Đưa việc kết nối vào loop chạy ngầm
-                            asyncio.run_coroutine_threadsafe(start_tracking(target, loop), loop)
-                        
-                        elif cmd == "/list":
+                        # Ưu tiên kiểm tra lệnh hệ thống trước
+                        if text == "/list":
                             names = list(ACTIVE_CLIENTS.keys())
-                            status = f"📝 Đang xem {len(names)} kênh:\n" + ("\n".join(names) if names else "Chưa có kênh nào.")
+                            if names:
+                                status = "📝 <b>Danh sách đang theo dõi:</b>\n" + "\n".join([f"• {n}" for n in names])
+                            else:
+                                status = "📝 Hiện tại chưa theo dõi kênh nào."
                             send_tele(status)
+                        
+                        # Nếu không phải lệnh hệ thống thì mới kiểm tra xem có phải tên kênh không
+                        elif text.startswith("@") or (len(text) > 2 and " " not in text):
+                            target = text if text.startswith("@") else f"@{text}"
+                            send_tele(f"⏳ Đang kết nối tới {target}...")
+                            asyncio.run_coroutine_threadsafe(start_tracking(target, loop), loop)
         except:
-            time.sleep(5)
+            time.sleep(2)
         time.sleep(1)
+
 
 # --- KHỞI CHẠY TỔNG HỢP ---
 if __name__ == '__main__':
