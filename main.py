@@ -9,21 +9,19 @@ import time
 import re
 
 # --- CẤU HÌNH HỆ THỐNG ---
-# Link render của bạn: https://tiktok-bot-live.onrender.com/
 WEB_URL = "https://tiktok-bot-live.onrender.com" 
 
 TELEGRAM_TOKEN = "8701996946:AAHcxrWvB7C1t1QURjS1k4ibKxDUuNfJzuw"
 TELEGRAM_CHAT_ID = "1882718625"
 ACTIVE_CLIENTS = {}
 
-# Mặc định báo trước 45 giây
 NOTIFY_TIME = 45 
 
 app = Flask(__name__)
 
 @app.route('/')
 def home(): 
-    return "Bot Hunter v5.9 (Sniper Edition) is Running!"
+    return "Bot Hunter v5.8 (Exact Time Decoder) is Running!"
 
 @app.route('/timer')
 def timer():
@@ -41,7 +39,7 @@ def timer():
     <html>
     <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-        <title>Đếm ngược Sniper</title>
+        <title>Đếm ngược Rương</title>
         <style>
             body { background-color: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
             .info { font-size: 24px; color: #ff2d55; margin-bottom: 5px; font-weight: bold;}
@@ -130,6 +128,7 @@ def send_tele(msg):
     try: requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
     except: pass
 
+# --- LOGIC QUÉT GIỜ TUYỆT ĐỐI ---
 async def start_tracking(username, loop):
     if username in ACTIVE_CLIENTS: return
     clean_name = username.replace("@", "").strip()
@@ -138,7 +137,7 @@ async def start_tracking(username, loop):
 
     @client.on(ConnectEvent)
     async def on_connect(event: ConnectEvent):
-        send_tele(f"✅ <b>Đã vào phòng:</b> @{clean_name}")
+        send_tele(f"✅ <b>Đã vào phòng:</b> @{clean_name}\nĐang trực rương...")
 
     @client.on(EnvelopeEvent)
     async def on_envelope(event: EnvelopeEvent):
@@ -157,19 +156,33 @@ async def start_tracking(username, loop):
 
             wait_sec = 0
             current_ms = int(time.time() * 1000)
+
+            # CÁCH 1: Tìm mốc thời gian tương lai (Timestamp Decoder) - Chính xác nhất
+            # Lọc ra tất cả các dãy 13 chữ số (chuẩn thời gian của TikTok)
             all_13_digits = re.findall(r"\b(17\d{11})\b", raw_data)
             for ts_str in all_13_digits:
                 diff_sec = (int(ts_str) - current_ms) / 1000
+                # Nếu cái mốc đó nằm trong khoảng từ 10 giây đến 10 phút trong tương lai
                 if 10 < diff_sec <= 600: 
                     wait_sec = int(diff_sec)
-                    break 
+                    break # Lấy ngay thời gian này!
 
+            # CÁCH 2: Nếu không có mốc tương lai, tìm đếm ngược như cũ
             if wait_sec == 0:
                 m_exact = re.search(r"(?:wait_time|duration)['\"]?[:=]\s*(\d{2,4})\b", raw_data, re.I)
-                wait_sec = int(m_exact.group(1)) if m_exact else 300
+                if m_exact: wait_sec = int(m_exact.group(1))
+            
+            if wait_sec == 0:
+                m_common = re.search(r"time['\"]?[:=]\s*(300|180|120|600)\b", raw_data, re.I)
+                if m_common: wait_sec = int(m_common.group(1))
+
+            # Dự phòng cuối cùng
+            if wait_sec == 0 or wait_sec > 1000: 
+                wait_sec = 300 
 
             event_ts = int(time.time())
             delay_time = wait_sec - NOTIFY_TIME 
+            
             if delay_time > 0:
                 await asyncio.sleep(delay_time)
 
@@ -179,20 +192,22 @@ async def start_tracking(username, loop):
 
             if actual_remaining > 0:
                 timer_url = f"{WEB_URL}/timer?ts={event_ts}&w={wait_sec}&user={clean_name}&c={coins}"
+
                 msg = (f"🔥 <b>RƯƠNG SẮP MỞ! (VÀO GẤP)</b>\n\n"
                        f"👤 <b>Kênh:</b> @{clean_name}\n"
                        f"💰 <b>Trị giá:</b> {coins} Xu / {people} người\n"
                        f"⏱ <b>Mở sau:</b> {actual_remaining} giây\n\n"
-                       f"👉 <a href='{timer_url}'><b>BẤM MỞ ĐỒNG HỒ & CHUẨN BỊ LỤM</b></a>")
+                       f"👉 <a href='{timer_url}'>BẤM MỞ ĐỒNG HỒ & CHUẨN BỊ LỤM</a>")
                 send_tele(msg)
-        except: pass
+        except Exception as e:
+            print(f"Lỗi: {e}")
 
     try: await client.start()
     except: ACTIVE_CLIENTS.pop(username, None)
 
 def tele_worker(loop):
     last_id = 0
-    send_tele(f"🚀 <b>Hệ thống v5.9 (Sniper Edition) Online!</b>")
+    send_tele(f"🚀 <b>Hệ thống v5.8 (Exact Time) Online!</b>\nĐã kích hoạt cỗ máy giải mã thời gian Timestamp.")
     while True:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={last_id + 1}&timeout=20"
@@ -202,7 +217,10 @@ def tele_worker(loop):
                     last_id = update["update_id"]
                     if "message" in update and "text" in update["message"]:
                         text = update["message"]["text"].strip()
-                        if text.startswith("@") or (len(text) > 2 and " " not in text and "/" not in text):
+                        if text == "/list":
+                            names = list(ACTIVE_CLIENTS.keys())
+                            send_tele(f"📝 Đang xem: " + ", ".join(names) if names else "Trống")
+                        elif text.startswith("@") or (len(text) > 2 and " " not in text):
                             target = text if text.startswith("@") else f"@{text}"
                             send_tele(f"⏳ Đang kết nối tới {target}...")
                             asyncio.run_coroutine_threadsafe(start_tracking(target, loop), loop)
