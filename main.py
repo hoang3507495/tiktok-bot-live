@@ -21,7 +21,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home(): 
-    return "Bot Hunter v5.6 (Milli-Sniper) is Running!"
+    return "Bot Hunter v5.8 (Exact Time Decoder) is Running!"
 
 @app.route('/timer')
 def timer():
@@ -43,23 +43,47 @@ def timer():
         <style>
             body { background-color: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
             .info { font-size: 24px; color: #ff2d55; margin-bottom: 5px; font-weight: bold;}
-            .coins { font-size: 18px; color: #8e8e93; margin-bottom: 40px;}
-            /* Chỉnh lại font số để chứa thêm phần thập phân không bị tràn */
+            .coins { font-size: 18px; color: #8e8e93; margin-bottom: 20px;}
+            
             .timer { font-size: 95px; font-weight: 200; font-variant-numeric: tabular-nums; letter-spacing: -2px; line-height: 1; display: flex; align-items: baseline; justify-content: center; width: 100%;}
-            .timer .ms { font-size: 60px; color: #a1a1a6; margin-left: 2px;} /* Chữ số phần mười giây nhỏ hơn và màu mờ chút cho giống iPhone */
-            .btn { margin-top: 60px; padding: 18px 0; background-color: #ff2d55; color: white; text-decoration: none; border-radius: 15px; font-size: 20px; font-weight: 600; width: 85%; text-align: center; box-shadow: 0 4px 15px rgba(255, 45, 85, 0.3); }
+            .timer .ms { font-size: 60px; color: #a1a1a6; margin-left: 2px;}
+            
+            .controls { display: flex; gap: 10px; margin-top: 20px; }
+            .ctrl-btn { background-color: #1c1c1e; color: #0a84ff; border: 1px solid #3a3a3c; padding: 10px 15px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
+            .ctrl-btn:active { background-color: #3a3a3c; }
+
+            .btn { margin-top: 40px; padding: 18px 0; background-color: #ff2d55; color: white; text-decoration: none; border-radius: 15px; font-size: 20px; font-weight: 600; width: 85%; text-align: center; box-shadow: 0 4px 15px rgba(255, 45, 85, 0.3); }
             .btn:active { transform: scale(0.98); opacity: 0.9; }
         </style>
     </head>
     <body>
         <div class="info">@{{user}}</div>
         <div class="coins">🎁 Rương: {{coins}} Xu</div>
+        
         <div class="timer" id="time">00:00<span class="ms">.0</span></div>
+        
+        <div class="controls">
+            <button class="ctrl-btn" onclick="adjustTime(-60)">-1 Phút</button>
+            <button class="ctrl-btn" onclick="adjustTime(60)">+1 Phút</button>
+            <button class="ctrl-btn" onclick="adjustTime(120)">+2 Phút</button>
+        </div>
+
         <a href="https://www.tiktok.com/@{{user}}/live" class="btn">MỞ TIKTOK NGAY</a>
+        
         <script>
             var remainingSeconds = {{remaining}};
-            // Lấy chính xác thời gian mốc (miligiây) của thiết bị hiện tại + số giây còn lại
             var targetTime = Date.now() + remainingSeconds * 1000;
+            var timerInterval;
+
+            function adjustTime(seconds) {
+                targetTime += seconds * 1000;
+                clearInterval(timerInterval);
+                document.getElementById("time").style.color = "#fff";
+                document.getElementById("time").style.fontWeight = "200";
+                var msElem = document.querySelector('.ms');
+                if(msElem) msElem.style.color = "#a1a1a6";
+                startTimer();
+            }
 
             function updateDisplay() {
                 var now = Date.now();
@@ -70,29 +94,29 @@ def timer():
                     document.getElementById("time").style.color = "#32d74b";
                     document.getElementById("time").style.fontWeight = "bold";
                     var msElem = document.querySelector('.ms');
-                    if(msElem) msElem.style.color = "#32d74b"; // Xanh lá cả phần đuôi
+                    if(msElem) msElem.style.color = "#32d74b";
                     return true;
                 }
 
                 var m = Math.floor(distance / 60000);
                 var s = Math.floor((distance % 60000) / 1000);
-                var ms = Math.floor((distance % 1000) / 100); // Lấy 1 chữ số thập phân (1/10 giây)
+                var ms = Math.floor((distance % 1000) / 100);
 
                 var mStr = m < 10 ? "0" + m : m;
                 var sStr = s < 10 ? "0" + s : s;
                 
-                // Hiển thị dạng 00:41.9
                 document.getElementById("time").innerHTML = mStr + ":" + sStr + "<span class='ms'>." + ms + "</span>";
                 return false;
             }
 
-            updateDisplay();
-            if (remainingSeconds > 0) {
-                // Chạy siêu tốc 50 mili-giây 1 lần để số hiển thị cực mượt
-                var x = setInterval(function() {
-                    if (updateDisplay()) clearInterval(x);
+            function startTimer() {
+                updateDisplay();
+                timerInterval = setInterval(function() {
+                    if (updateDisplay()) clearInterval(timerInterval);
                 }, 50);
             }
+
+            startTimer();
         </script>
     </body>
     </html>
@@ -104,7 +128,7 @@ def send_tele(msg):
     try: requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
     except: pass
 
-# --- LOGIC CHỜ THÔNG MINH ---
+# --- LOGIC QUÉT GIỜ TUYỆT ĐỐI ---
 async def start_tracking(username, loop):
     if username in ACTIVE_CLIENTS: return
     clean_name = username.replace("@", "").strip()
@@ -130,11 +154,31 @@ async def start_tracking(username, loop):
             match_people = re.search(r"(?:can_win_count|winner_count|winner_num|people_count)[:=]\s*(\d+)", raw_data, re.I)
             people = match_people.group(1) if match_people else "Nhiều"
 
-            match_time = re.search(r"(?:wait_time|duration)['\"]?[:=]\s*(\d+)", raw_data, re.I)
-            wait_sec = int(match_time.group(1)) if match_time else 0
+            wait_sec = 0
+            current_ms = int(time.time() * 1000)
+
+            # CÁCH 1: Tìm mốc thời gian tương lai (Timestamp Decoder) - Chính xác nhất
+            # Lọc ra tất cả các dãy 13 chữ số (chuẩn thời gian của TikTok)
+            all_13_digits = re.findall(r"\b(17\d{11})\b", raw_data)
+            for ts_str in all_13_digits:
+                diff_sec = (int(ts_str) - current_ms) / 1000
+                # Nếu cái mốc đó nằm trong khoảng từ 10 giây đến 10 phút trong tương lai
+                if 10 < diff_sec <= 600: 
+                    wait_sec = int(diff_sec)
+                    break # Lấy ngay thời gian này!
+
+            # CÁCH 2: Nếu không có mốc tương lai, tìm đếm ngược như cũ
             if wait_sec == 0:
-                match_t = re.search(r"\btime['\"]?[:=]\s*(\d{1,4})\b", raw_data, re.I)
-                wait_sec = int(match_t.group(1)) if match_t else 180
+                m_exact = re.search(r"(?:wait_time|duration)['\"]?[:=]\s*(\d{2,4})\b", raw_data, re.I)
+                if m_exact: wait_sec = int(m_exact.group(1))
+            
+            if wait_sec == 0:
+                m_common = re.search(r"time['\"]?[:=]\s*(300|180|120|600)\b", raw_data, re.I)
+                if m_common: wait_sec = int(m_common.group(1))
+
+            # Dự phòng cuối cùng
+            if wait_sec == 0 or wait_sec > 1000: 
+                wait_sec = 300 
 
             event_ts = int(time.time())
             delay_time = wait_sec - NOTIFY_TIME 
@@ -155,14 +199,15 @@ async def start_tracking(username, loop):
                        f"⏱ <b>Mở sau:</b> {actual_remaining} giây\n\n"
                        f"👉 <a href='{timer_url}'>BẤM MỞ ĐỒNG HỒ & CHUẨN BỊ LỤM</a>")
                 send_tele(msg)
-        except: pass
+        except Exception as e:
+            print(f"Lỗi: {e}")
 
     try: await client.start()
     except: ACTIVE_CLIENTS.pop(username, None)
 
 def tele_worker(loop):
     last_id = 0
-    send_tele(f"🚀 <b>Hệ thống v5.6 (Milli-Sniper) Online!</b>\nĐồng hồ web đã hỗ trợ nhảy số thập phân.")
+    send_tele(f"🚀 <b>Hệ thống v5.8 (Exact Time) Online!</b>\nĐã kích hoạt cỗ máy giải mã thời gian Timestamp.")
     while True:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={last_id + 1}&timeout=20"
