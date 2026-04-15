@@ -18,7 +18,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home(): 
-    return "Bot Hunter v5.8.4 (Debug Mode) is Running!"
+    return "Bot Hunter v5.8.5 (Smart Time Fix) is Running!"
 
 @app.route('/timer')
 def timer():
@@ -96,9 +96,7 @@ def timer():
 def send_tele(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try: 
-        response = requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
-        if response.status_code != 200:
-            print(f"❌ [LỖI TELEGRAM]: Không thể gửi tin nhắn. API phản hồi: {response.text}")
+        requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
     except Exception as e: 
         print(f"❌ [LỖI MẠNG TELEGRAM]: {e}")
 
@@ -110,31 +108,32 @@ async def start_tracking(username, loop):
 
     @client.on(ConnectEvent)
     async def on_connect(event: ConnectEvent):
-        send_tele(f"✅ <b>Đã vào phòng:</b> @{clean_name}\nĐang trực rương (chờ rương mới rơi)...")
+        send_tele(f"✅ <b>Đã vào phòng:</b> @{clean_name}\nĐang trực rương...")
         print(f"📡 [KẾT NỐI] Đã chui vào phòng {clean_name}")
 
     @client.on(EnvelopeEvent)
     async def on_envelope(event: EnvelopeEvent):
         raw_data = str(vars(event))
-        print(f"📦 [RƯƠNG RƠI] Đã nhận được dữ liệu từ {clean_name}! Dữ liệu thô: {raw_data[:200]}...") # In ra log để kiểm tra
+        print(f"📦 [RƯƠNG RƠI] Dữ liệu từ {clean_name}: {raw_data[:250]}...")
         
         try:
+            # 1. BẮT SỐ XU
             match_coins = re.search(r"string_value='(\d+)'", raw_data)
             coins = match_coins.group(1) if match_coins else "0"
             if coins == "0":
                 alt_coins = re.search(r"['\"]?(?:coin|score|diamond_count)['\"]?[:=]\s*(\d+)", raw_data, re.I)
                 coins = alt_coins.group(1) if alt_coins else "0"
-            
-            if coins == "0": 
-                print(f"⚠️ [BỎ QUA] Không tìm thấy số xu trong dữ liệu rương của {clean_name}.")
-                return
+            if coins == "0": return
 
+            # 2. BẮT SỐ NGƯỜI
             match_people = re.search(r"(?:can_win_count|winner_count|winner_num|people_count)[:=]\s*(\d+)", raw_data, re.I)
             people = match_people.group(1) if match_people else "Nhiều"
 
+            # 3. SIÊU THUẬT TOÁN TÌM GIỜ (V5.8.5)
             wait_sec = 0
             current_ms = int(time.time() * 1000)
 
+            # Cách A: Giải mã mốc thời gian tương lai (Timestamp)
             all_13_digits = re.findall(r"\b(17\d{11})\b", raw_data)
             for ts_str in all_13_digits:
                 diff_sec = (int(ts_str) - current_ms) / 1000
@@ -142,24 +141,29 @@ async def start_tracking(username, loop):
                     wait_sec = int(diff_sec)
                     break 
 
+            # Cách B: Tìm các từ khóa thời gian mới nhất của TikTok
             if wait_sec == 0:
-                m_exact = re.search(r"(?:wait_time|duration)['\"]?[:=]\s*(\d{2,4})\b", raw_data, re.I)
-                if m_exact: wait_sec = int(m_exact.group(1))
-            
-            if wait_sec == 0:
-                m_common = re.search(r"time['\"]?[:=]\s*(300|180|120|600)\b", raw_data, re.I)
-                if m_common: wait_sec = int(m_common.group(1))
+                m_kw = re.search(r"(?:wait_time|duration|delay|countdown|left_time)['\"]?[:=]\s*['\"]?(\d{2,4})\b", raw_data, re.I)
+                if m_kw: wait_sec = int(m_kw.group(1))
 
+            # Cách C (MỚI - CỰC MẠNH): Bắt mù các mốc giờ chuẩn của rương
+            if wait_sec == 0 or wait_sec > 1000:
+                # Nếu thấy số 180 (3 phút) hoặc 300 (5 phút) hoặc 600 (10 phút) nằm trơ trọi, tóm luôn!
+                m_standard = re.search(r"\b(180|300|600|120|60)\b", raw_data)
+                if m_standard:
+                    wait_sec = int(m_standard.group(1))
+                    print(f"🎯 [BẮT MÙ THÀNH CÔNG] Tìm thấy mốc thời gian chuẩn: {wait_sec} giây")
+
+            # Cách D: Dự phòng cuối cùng (Đã đổi từ 300s về 180s vì rương 3 phút phổ biến hơn)
             if wait_sec == 0 or wait_sec > 1000: 
-                wait_sec = 300 
+                wait_sec = 180 
+                print(f"⚠️ [DỰ PHÒNG] Không tìm thấy số, mặc định ép về 180 giây (3 phút)")
 
             event_ts = int(time.time())
-            
             current_elapsed = int(time.time()) - event_ts
             actual_remaining = wait_sec - current_elapsed
             if actual_remaining < 0: actual_remaining = 0
 
-            print(f"🚀 [GỬI TELEGRAM] Sắp gửi thông báo rương {coins} xu của {clean_name}!")
             if actual_remaining > 0:
                 timer_url = f"{WEB_URL}/timer?ts={event_ts}&w={wait_sec}&user={clean_name}&c={coins}"
                 msg = (f"🔥 <b>PHÁT HIỆN RƯƠNG!</b>\n\n"
@@ -170,11 +174,10 @@ async def start_tracking(username, loop):
                 send_tele(msg)
                 
         except Exception as e: 
-            print(f"❌ [LỖI PHÂN TÍCH CODE]: Không thể đọc được gói tin rương. Lỗi: {e}")
+            print(f"❌ [LỖI PHÂN TÍCH CODE]: {e}")
 
     try: await client.start()
     except Exception as e: 
-        print(f"❌ [LỖI KẾT NỐI TIKTOK]: {e}")
         ACTIVE_CLIENTS.pop(username, None)
 
 def tele_worker(loop):
@@ -182,7 +185,7 @@ def tele_worker(loop):
     try: requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset=-1")
     except: pass
     
-    send_tele(f"🚀 <b>Hệ thống v5.8.4 (Gỡ lỗi) Sẵn sàng!</b>")
+    send_tele(f"🚀 <b>Hệ thống v5.8.5 Sẵn sàng!</b>\nĐã tối ưu hóa thuật toán tìm rương 3 phút.")
     
     while True:
         try:
