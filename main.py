@@ -6,13 +6,14 @@ import requests
 import os
 import asyncio
 import time
+import re  # Thư viện quét từ khóa siêu mạnh
 
 # --- CẤU HÌNH WEB SERVER ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot X-Ray is Active!"
+    return "Bot Hunter Pro v4 is Active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -41,34 +42,61 @@ async def start_tracking(username, loop):
 
     @client.on(ConnectEvent)
     async def on_connect(event: ConnectEvent):
-        send_tele(f"✅ <b>Đã vào phòng:</b> @{clean_name}\nĐang bật máy quét X-Quang...")
+        send_tele(f"✅ <b>Đã vào phòng:</b> @{clean_name}\nĐang trực rương...")
 
     @client.on(EnvelopeEvent)
     async def on_envelope(event: EnvelopeEvent):
         try:
-            # LẤY TOÀN BỘ DỮ LIỆU THÔ (RAW DATA)
-            # Quét tất cả các thuộc tính bên trong gói tin rương/túi
-            raw_dict = str(vars(event))
+            # Chuyển toàn bộ dữ liệu rương thành văn bản để quét
+            raw_data = str(vars(event))
             
-            msg = (f"🛠 <b>[X-QUANG] BẮT ĐƯỢC GÓI TIN!</b>\n\n"
+            # 1. Quét tìm Số Xu
+            coins = "0"
+            # Thử tìm trong chuỗi string_value (giống cái X-Quang bạn gửi)
+            match_coins = re.search(r"string_value='(\d+)'", raw_data)
+            if not match_coins:
+                # Nếu không có, tìm bằng các từ khóa dự phòng của TikTok
+                match_coins = re.search(r"['\"]?(?:coin|coins|diamond_count)['\"]?[:=]\s*(\d+)", raw_data, re.IGNORECASE)
+            
+            if match_coins:
+                coins = match_coins.group(1)
+
+            # BỎ QUA RƯƠNG ẢO HOẶC 0 XU (Chống spam)
+            if coins == "0": 
+                return
+
+            # 2. Quét tìm Số Người Nhặt
+            people = "..."
+            match_people = re.search(r"['\"]?(?:can_win_count|people_count|total_people_count)['\"]?[:=]\s*(\d+)", raw_data, re.IGNORECASE)
+            if match_people:
+                people = match_people.group(1)
+                
+            # 3. Quét tìm Thời gian chờ (giây)
+            wait_time = "..."
+            match_time = re.search(r"['\"]?(?:wait_time|time)['\"]?[:=]\s*(\d+)", raw_data, re.IGNORECASE)
+            if match_time and len(match_time.group(1)) < 5: # Lọc bỏ các dãy số timestamp quá dài
+                wait_time = match_time.group(1)
+
+            # GỬI TIN NHẮN CHUẨN ĐẸP VỀ TELEGRAM
+            msg = (f"🎁 <b>PHÁT HIỆN RƯƠNG!</b>\n\n"
                    f"👤 <b>Kênh:</b> @{clean_name}\n"
-                   f"🔍 <b>DỮ LIỆU GỐC TỪ TIKTOK:</b>\n"
-                   f"<code>{raw_dict[:1500]}</code>\n\n"
-                   f"<i>👆 Hãy copy đoạn mã tiếng Anh loằng ngoằng ở trên gửi cho tôi!</i>")
+                   f"💰 <b>Trị giá:</b> {coins} Xu / {people} người\n"
+                   f"⏳ <b>Chờ mở:</b> {wait_time}s\n"
+                   f"🔗 <a href='https://www.tiktok.com/@{clean_name}/live'>BẤM VÀO ĐÂY NHẶT NGAY</a>")
             send_tele(msg)
+            
         except Exception as e:
-            send_tele(f"⚠️ Lỗi trích xuất dữ liệu: {e}")
+            pass # Lỗi đọc thì bỏ qua, không làm phiền Telegram
 
     try:
         await client.start()
     except Exception as e:
         ACTIVE_CLIENTS.pop(username, None)
-        send_tele(f"❌ <b>Mất kết nối với:</b> @{clean_name}")
 
 # --- QUÉT LỆNH TELEGRAM ---
 def tele_worker(loop):
     last_id = 0
-    send_tele("🚀 <b>Hệ thống X-Quang đã sẵn sàng!</b>\nNhắn <code>@ten_kenh</code> để quét dữ liệu.")
+    send_tele("🚀 <b>Hệ thống Săn Rương v4 Sẵn Sàng!</b>\n\n- Nhắn <code>@ten_kenh</code> để săn.\n- Nhắn <code>/list</code> để xem danh sách.")
     
     while True:
         try:
@@ -82,8 +110,12 @@ def tele_worker(loop):
                         
                         if text == "/list":
                             names = list(ACTIVE_CLIENTS.keys())
-                            status = "📝 <b>Danh sách:</b>\n" + "\n".join([f"• {n}" for n in names]) if names else "Trống"
+                            if names:
+                                status = "📝 <b>Danh sách đang theo dõi:</b>\n" + "\n".join([f"• {n}" for n in names])
+                            else:
+                                status = "📝 Hiện tại chưa theo dõi kênh nào."
                             send_tele(status)
+                        
                         elif text.startswith("@") or (len(text) > 2 and " " not in text):
                             target = text if text.startswith("@") else f"@{text}"
                             send_tele(f"⏳ Đang kết nối tới {target}...")
