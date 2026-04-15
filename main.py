@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template_string
 from threading import Thread
 from TikTokLive import TikTokLiveClient
-from TikTokLive.events import EnvelopeEvent, ConnectEvent
+from TikTokLive.events import EnvelopeEvent, ConnectEvent, RoomUserSeqEvent
 import requests
 import os
 import asyncio
@@ -13,27 +13,22 @@ WEB_URL = "https://tiktok-bot-live.onrender.com"
 TELEGRAM_TOKEN = "8701996946:AAHcxrWvB7C1t1QURjS1k4ibKxDUuNfJzuw"
 TELEGRAM_CHAT_ID = "1882718625"
 ACTIVE_CLIENTS = {}
+ROOM_VIEWERS = {}
 
-# Sổ đen lưu ID rương đã gửi để chống Spam
 PROCESSED_ENVELOPES = []
 
 app = Flask(__name__)
 
 @app.route('/')
 def home(): 
-    return "Bot Hunter v6.2 (Exact Sync) is Running!"
+    return "Bot Hunter v6.4 (Client-Side Sync) is Running!"
 
 @app.route('/timer')
 def timer():
-    ts = request.args.get('ts', 0, type=int)
-    w = request.args.get('w', 0, type=int)
+    # Bản mới: Nhận trực tiếp mốc thời gian tuyệt đối (target_ts) từ TikTok
+    target_ts = request.args.get('target', 0, type=int)
     user = request.args.get('user', 'TikTok')
     coins = request.args.get('c', '...')
-    
-    elapsed = int(time.time()) - ts
-    # ĐÃ GỠ BỎ LỆNH TRỪ 2 GIÂY (- 2) Ở ĐÂY. ĐỒNG BỘ CHÍNH XÁC TUYỆT ĐỐI!
-    remaining = w - elapsed 
-    if remaining < 0: remaining = 0
 
     html = """
     <!DOCTYPE html>
@@ -63,8 +58,8 @@ def timer():
         </div>
         <a href="https://www.tiktok.com/@{{user}}/live" class="btn">MỞ TIKTOK NGAY</a>
         <script>
-            var remainingSeconds = {{remaining}};
-            var targetTime = Date.now() + remainingSeconds * 1000;
+            // Bỏ qua server Render, dùng thẳng đồng hồ điện thoại của bạn (Date.now())
+            var targetTime = {{target_ts}} * 1000;
             var timerInterval;
             function adjustTime(seconds) {
                 targetTime += seconds * 1000;
@@ -95,7 +90,7 @@ def timer():
     </body>
     </html>
     """
-    return render_template_string(html, remaining=remaining, user=user, coins=coins)
+    return render_template_string(html, target_ts=target_ts, user=user, coins=coins)
 
 def send_tele(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -107,11 +102,16 @@ async def start_tracking(username, loop, force_time=0):
     clean_name = username.replace("@", "").strip()
     client = TikTokLiveClient(unique_id=clean_name)
     ACTIVE_CLIENTS[username] = client
+    ROOM_VIEWERS[username] = "Đang tải..."
 
     @client.on(ConnectEvent)
     async def on_connect(event: ConnectEvent):
-        mode_text = f"Ép đếm {force_time}s" if force_time > 0 else "Thời gian chuẩn xác tuyệt đối"
+        mode_text = f"Ép đếm {force_time}s" if force_time > 0 else "Đồng bộ Client-Side"
         send_tele(f"✅ <b>Đã vào phòng:</b> @{clean_name}\nChế độ: {mode_text}")
+
+    @client.on(RoomUserSeqEvent)
+    async def on_user_seq(event: RoomUserSeqEvent):
+        ROOM_VIEWERS[username] = event.viewer_count
 
     @client.on(EnvelopeEvent)
     async def on_envelope(event: EnvelopeEvent):
@@ -119,75 +119,64 @@ async def start_tracking(username, loop, force_time=0):
         raw_data = str(vars(event))
         
         try:
-            # LỌC 1: Bỏ qua lệnh Ẩn rương
-            if "ENVELOPE_DISPLAY_HIDE" in raw_data:
-                return
+            if "ENVELOPE_DISPLAY_HIDE" in raw_data: return
 
-            # Lấy ID Rương
             match_env_id = re.search(r"envelope_id\s*[:=]\s*['\"]?(\d+)['\"]?", raw_data)
             env_id = match_env_id.group(1) if match_env_id else None
 
-            # LỌC 2: Chống Spam
-            if env_id and env_id in PROCESSED_ENVELOPES:
-                return
+            if env_id and env_id in PROCESSED_ENVELOPES: return
 
-            # 1. TÌM XU
             match_coins = re.search(r"diamond_count[:=]\s*(\d+)", raw_data, re.I)
             coins = match_coins.group(1) if match_coins else "?"
             if coins == "?":
                 alt_coins = re.search(r"['\"]?(?:coin|score|string_value)['\"]?[:=]\s*['\"]?(\d+)['\"]?", raw_data, re.I)
                 coins = alt_coins.group(1) if alt_coins else "?"
 
-            # LỌC 3: Chưa load xong xu -> Chờ gói sau
-            if coins == "?" or coins == "0":
-                return
+            if coins == "?" or coins == "0": return
 
-            # 2. TÌM NGƯỜI
             match_people = re.search(r"(?:people_count|can_win_count|winner_count)[:=]\s*(\d+)", raw_data, re.I)
             people = match_people.group(1) if match_people else "?"
 
-            wait_sec = 0
+            # --- THUẬT TOÁN TÌM MỐC THỜI GIAN TUYỆT ĐỐI (TARGET_TS) ---
+            target_ts = 0
             if force_time > 0:
-                wait_sec = force_time
+                target_ts = int(time.time()) + force_time
             else:
-                current_time_sec = int(time.time())
-                
-                # CHÌA KHÓA VÀNG: UNPACK_AT
                 match_unpack = re.search(r"unpack_at[:=]\s*['\"]?(\d{10,13})\b", raw_data)
                 if match_unpack:
                     unpack_val = int(match_unpack.group(1))
-                    if unpack_val < 10000000000:
-                        wait_sec = unpack_val - current_time_sec
-                    else:
-                        wait_sec = int((unpack_val - (current_time_sec * 1000)) / 1000)
+                    target_ts = unpack_val if unpack_val < 10000000000 else int(unpack_val / 1000)
 
-                # Quét dự phòng
-                if wait_sec <= 0:
-                    current_ms = current_time_sec * 1000
+                if target_ts == 0:
+                    current_ms = int(time.time() * 1000)
                     all_13_digits = re.findall(r"\b(17\d{11})\b", raw_data)
                     for ts_str in all_13_digits:
-                        diff_sec = (int(ts_str) - current_ms) / 1000
-                        if 10 < diff_sec <= 600: wait_sec = int(diff_sec); break 
+                        # Tìm thời gian mở trong khoảng từ 10s đến 10 phút tính từ hiện tại
+                        if 10000 < (int(ts_str) - current_ms) <= 600000: 
+                            target_ts = int(int(ts_str) / 1000)
+                            break 
 
-                if wait_sec <= 0: wait_sec = 180 
+                if target_ts == 0: 
+                    target_ts = int(time.time()) + 180 
 
-            event_ts = int(time.time())
-            current_elapsed = int(time.time()) - event_ts
-            actual_remaining = wait_sec - current_elapsed
+            # Tính toán thời gian còn lại (chỉ để hiển thị trên tin nhắn Tele)
+            actual_remaining = target_ts - int(time.time())
             if actual_remaining < 0: actual_remaining = 0
 
-            # GỬI TIN & LƯU SỔ ĐEN
             if actual_remaining > 0:
                 if env_id:
                     PROCESSED_ENVELOPES.append(env_id)
-                    if len(PROCESSED_ENVELOPES) > 50:
-                        PROCESSED_ENVELOPES.pop(0)
+                    if len(PROCESSED_ENVELOPES) > 50: PROCESSED_ENVELOPES.pop(0)
 
-                timer_url = f"{WEB_URL}/timer?ts={event_ts}&w={wait_sec}&user={clean_name}&c={coins}"
+                current_viewers = ROOM_VIEWERS.get(username, "Không rõ")
+
+                # TRUYỀN THẲNG TARGET_TS VÀO URL
+                timer_url = f"{WEB_URL}/timer?target={target_ts}&user={clean_name}&c={coins}"
                 msg = (f"🔥 <b>PHÁT HIỆN RƯƠNG!</b>\n\n"
                        f"👤 <b>Kênh:</b> @{clean_name}\n"
                        f"💰 <b>Trị giá:</b> {coins} Xu / {people} người\n"
-                       f"⏱ <b>Mở sau:</b> {actual_remaining} giây\n\n"
+                       f"👁 <b>Đang xem:</b> {current_viewers} người\n"
+                       f"⏱ <b>Mở sau:</b> ~{actual_remaining} giây\n\n"
                        f"👉 <a href='{timer_url}'><b>BẤM MỞ ĐỒNG HỒ & CHUẨN BỊ LỤM</b></a>")
                 send_tele(msg)
         except: pass
@@ -199,7 +188,7 @@ def tele_worker(loop):
     last_id = 0
     try: requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset=-1")
     except: pass
-    send_tele(f"🚀 <b>Hệ thống v6.2 (Exact Sync) Sẵn sàng!</b>\nĐã gỡ bỏ khoảng lùi, thời gian đếm ngược chính xác tuyệt đối.")
+    send_tele(f"🚀 <b>Hệ thống v6.4 Sẵn sàng!</b>\nĐã khắc phục lỗi lệch 30s do máy chủ Render trễ mạng.")
     while True:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={last_id + 1}&timeout=20"
@@ -230,3 +219,4 @@ if __name__ == '__main__':
     tiktok_loop = asyncio.new_event_loop()
     Thread(target=lambda: (asyncio.set_event_loop(tiktok_loop), tiktok_loop.run_forever()), daemon=True).start()
     tele_worker(tiktok_loop)
+
