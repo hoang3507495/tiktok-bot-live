@@ -10,7 +10,7 @@ import re
 
 # --- CẤU HÌNH HỆ THỐNG CHÍNH ---
 # DÁN LINK RENDER CỦA BẠN VÀO ĐÂY (Giữ nguyên dấu ngoặc kép)
-WEB_URL = "https://ten-bot-cua-ban.onrender.com" 
+WEB_URL = "https://tiktok-bot-live.onrender.com/" 
 
 TELEGRAM_TOKEN = "8701996946:AAHcxrWvB7C1t1QURjS1k4ibKxDUuNfJzuw"
 TELEGRAM_CHAT_ID = "1882718625"
