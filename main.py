@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is Active!"
+    return "Bot Săn Rương (Chế độ TEST) is Active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -41,36 +41,37 @@ async def start_tracking(username, loop):
 
     @client.on(ConnectEvent)
     async def on_connect(event: ConnectEvent):
-        send_tele(f"✅ <b>Đã kết nối thành công:</b> @{clean_name}")
+        send_tele(f"✅ <b>Đã vào phòng Live:</b> @{clean_name}\nĐang trực rương...")
 
     @client.on(EnvelopeEvent)
     async def on_envelope(event: EnvelopeEvent):
         try:
-            # Lấy thông số rương linh hoạt theo phiên bản thư viện
-            coins = getattr(event, 'coins', 0)
-            people = getattr(event, 'can_win_count', 0)
-            wait_time = getattr(event, 'wait_time', "...")
+            # Bản test: Bắt mọi thông số có thể, nếu không có thì báo 'Không rõ'
+            coins = getattr(event, 'coins', getattr(event, 'treasure_box', {}).get('coins', 'Không rõ'))
+            people = getattr(event, 'can_win_count', getattr(event, 'treasure_box', {}).get('can_win_count', 'Không rõ'))
+            wait_time = getattr(event, 'wait_time', getattr(event, 'treasure_box', {}).get('time', 'Không rõ'))
 
-            if coins > 0:
-                msg = (f"🎁 <b>PHÁT HIỆN RƯƠNG!</b>\n\n"
-                       f"👤 <b>Kênh:</b> @{clean_name}\n"
-                       f"💰 <b>Trị giá:</b> {coins} Xu / {people} người\n"
-                       f"⏳ <b>Chờ:</b> {wait_time}s\n"
-                       f"🔗 <a href='https://www.tiktok.com/@{clean_name}/live'>VÀO NHẶT NGAY</a>")
-                send_tele(msg)
-        except:
-            pass
+            # Bản Test: BÁO MỌI RƯƠNG (Không cần > 0)
+            msg = (f"🛠 <b>[TEST] CÓ DỮ LIỆU RƯƠNG!</b>\n\n"
+                   f"👤 <b>Kênh:</b> @{clean_name}\n"
+                   f"💰 <b>Dữ liệu Xu:</b> {coins}\n"
+                   f"👥 <b>Người nhặt:</b> {people}\n"
+                   f"⏳ <b>Thời gian:</b> {wait_time}\n"
+                   f"🔗 <a href='https://www.tiktok.com/@{clean_name}/live'>VÀO LIVE KIỂM TRA NGAY</a>")
+            send_tele(msg)
+        except Exception as e:
+            send_tele(f"⚠️ <b>[LỖI ĐỌC RƯƠNG]:</b> Không phân tích được rương tại @{clean_name}. Lỗi: {str(e)}")
 
     try:
         await client.start()
-    except:
+    except Exception as e:
         ACTIVE_CLIENTS.pop(username, None)
+        send_tele(f"❌ <b>Mất kết nối với:</b> @{clean_name} (Có thể do kênh đã tắt Live hoặc bị chặn IP)")
 
-
-# --- QUÉT LỆNH TELEGRAM (Bản sửa lỗi nhận diện nhầm) ---
+# --- QUÉT LỆNH TELEGRAM ---
 def tele_worker(loop):
     last_id = 0
-    send_tele("🚀 <b>Hệ thống đã sẵn sàng!</b>\n\n- Nhắn <code>@ten_kenh</code> để săn.\n- Nhắn <code>/list</code> để xem danh sách.")
+    send_tele("🚀 <b>Hệ thống (BẢN TEST) đã sẵn sàng!</b>\n\n- Nhắn <code>/test</code> để thử tín hiệu báo rương.\n- Nhắn <code>@ten_kenh</code> để bắt đầu săn.\n- Nhắn <code>/list</code> để xem danh sách.")
     
     while True:
         try:
@@ -82,8 +83,12 @@ def tele_worker(loop):
                     if "message" in update and "text" in update["message"]:
                         text = update["message"]["text"].strip()
                         
-                        # Ưu tiên kiểm tra lệnh hệ thống trước
-                        if text == "/list":
+                        # Lệnh /test giả lập rương
+                        if text == "/test":
+                            send_tele("🎁 <b>[GIẢ LẬP] PHÁT HIỆN RƯƠNG!</b>\n\n👤 <b>Kênh:</b> @hethong\n💰 <b>Trị giá:</b> 100 Xu / 50 người\n⏳ <b>Chờ:</b> 180s\n🔗 <b>ĐƯỜNG TRUYỀN TELEGRAM HOẠT ĐỘNG TỐT!</b>")
+                            
+                        # Lệnh /list
+                        elif text == "/list":
                             names = list(ACTIVE_CLIENTS.keys())
                             if names:
                                 status = "📝 <b>Danh sách đang theo dõi:</b>\n" + "\n".join([f"• {n}" for n in names])
@@ -91,7 +96,7 @@ def tele_worker(loop):
                                 status = "📝 Hiện tại chưa theo dõi kênh nào."
                             send_tele(status)
                         
-                        # Nếu không phải lệnh hệ thống thì mới kiểm tra xem có phải tên kênh không
+                        # Thêm kênh
                         elif text.startswith("@") or (len(text) > 2 and " " not in text):
                             target = text if text.startswith("@") else f"@{text}"
                             send_tele(f"⏳ Đang kết nối tới {target}...")
@@ -100,19 +105,16 @@ def tele_worker(loop):
             time.sleep(2)
         time.sleep(1)
 
-
 # --- KHỞI CHẠY TỔNG HỢP ---
 if __name__ == '__main__':
-    # 1. Chạy Flask Web Server ở luồng riêng
     Thread(target=run_flask, daemon=True).start()
     
-    # 2. Tạo Event Loop cho TikTok ở luồng riêng
     tiktok_loop = asyncio.new_event_loop()
     def run_tiktok_loop(loop):
         asyncio.set_event_loop(loop)
         loop.run_forever()
     Thread(target=run_tiktok_loop, args=(tiktok_loop,), daemon=True).start()
     
-    # 3. Chạy quét Telegram ở luồng chính (giữ bot luôn thức)
     tele_worker(tiktok_loop)
+
 
