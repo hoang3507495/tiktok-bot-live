@@ -9,25 +9,31 @@ import time
 import re
 
 # --- CẤU HÌNH HỆ THỐNG ---
-# Đã cập nhật link Render của bạn
 WEB_URL = "https://tiktok-bot-live.onrender.com" 
 
 TELEGRAM_TOKEN = "8701996946:AAHcxrWvB7C1t1QURjS1k4ibKxDUuNfJzuw"
 TELEGRAM_CHAT_ID = "1882718625"
 ACTIVE_CLIENTS = {}
 
+NOTIFY_TIME = 45 
+
 app = Flask(__name__)
 
 @app.route('/')
 def home(): 
-    return "Bot Hunter v5.2 is Running!"
+    return "Bot Hunter v5.6 (Milli-Sniper) is Running!"
 
 @app.route('/timer')
 def timer():
-    t = request.args.get('t', 0, type=int)
+    ts = request.args.get('ts', 0, type=int)
+    w = request.args.get('w', 0, type=int)
     user = request.args.get('user', 'TikTok')
     coins = request.args.get('c', '0')
     
+    elapsed = int(time.time()) - ts
+    remaining = w - elapsed - 2 
+    if remaining < 0: remaining = 0
+
     html = """
     <!DOCTYPE html>
     <html>
@@ -36,9 +42,11 @@ def timer():
         <title>Đếm ngược Rương</title>
         <style>
             body { background-color: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
-            .info { font-size: 24px; color: #ff2d55; margin-bottom: 5px; font-weight: bold; letter-spacing: 0.5px;}
+            .info { font-size: 24px; color: #ff2d55; margin-bottom: 5px; font-weight: bold;}
             .coins { font-size: 18px; color: #8e8e93; margin-bottom: 40px;}
-            .timer { font-size: 110px; font-weight: 200; font-variant-numeric: tabular-nums; letter-spacing: -3px; line-height: 1; }
+            /* Chỉnh lại font số để chứa thêm phần thập phân không bị tràn */
+            .timer { font-size: 95px; font-weight: 200; font-variant-numeric: tabular-nums; letter-spacing: -2px; line-height: 1; display: flex; align-items: baseline; justify-content: center; width: 100%;}
+            .timer .ms { font-size: 60px; color: #a1a1a6; margin-left: 2px;} /* Chữ số phần mười giây nhỏ hơn và màu mờ chút cho giống iPhone */
             .btn { margin-top: 60px; padding: 18px 0; background-color: #ff2d55; color: white; text-decoration: none; border-radius: 15px; font-size: 20px; font-weight: 600; width: 85%; text-align: center; box-shadow: 0 4px 15px rgba(255, 45, 85, 0.3); }
             .btn:active { transform: scale(0.98); opacity: 0.9; }
         </style>
@@ -46,36 +54,57 @@ def timer():
     <body>
         <div class="info">@{{user}}</div>
         <div class="coins">🎁 Rương: {{coins}} Xu</div>
-        <div class="timer" id="time">00:00</div>
+        <div class="timer" id="time">00:00<span class="ms">.0</span></div>
         <a href="https://www.tiktok.com/@{{user}}/live" class="btn">MỞ TIKTOK NGAY</a>
         <script>
-            var target = {{t}} * 1000;
-            var x = setInterval(function() {
-                var now = new Date().getTime();
-                var distance = target - now;
+            var remainingSeconds = {{remaining}};
+            // Lấy chính xác thời gian mốc (miligiây) của thiết bị hiện tại + số giây còn lại
+            var targetTime = Date.now() + remainingSeconds * 1000;
+
+            function updateDisplay() {
+                var now = Date.now();
+                var distance = targetTime - now;
+
                 if (distance <= 0) {
-                    clearInterval(x);
-                    document.getElementById("time").innerHTML = "00:00";
+                    document.getElementById("time").innerHTML = "00:00<span class='ms'>.0</span>";
                     document.getElementById("time").style.color = "#32d74b";
                     document.getElementById("time").style.fontWeight = "bold";
-                    return;
+                    var msElem = document.querySelector('.ms');
+                    if(msElem) msElem.style.color = "#32d74b"; // Xanh lá cả phần đuôi
+                    return true;
                 }
-                var m = Math.floor((distance % 3600000) / 60000);
+
+                var m = Math.floor(distance / 60000);
                 var s = Math.floor((distance % 60000) / 1000);
-                document.getElementById("time").innerHTML = (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s);
-            }, 1000);
+                var ms = Math.floor((distance % 1000) / 100); // Lấy 1 chữ số thập phân (1/10 giây)
+
+                var mStr = m < 10 ? "0" + m : m;
+                var sStr = s < 10 ? "0" + s : s;
+                
+                // Hiển thị dạng 00:41.9
+                document.getElementById("time").innerHTML = mStr + ":" + sStr + "<span class='ms'>." + ms + "</span>";
+                return false;
+            }
+
+            updateDisplay();
+            if (remainingSeconds > 0) {
+                // Chạy siêu tốc 50 mili-giây 1 lần để số hiển thị cực mượt
+                var x = setInterval(function() {
+                    if (updateDisplay()) clearInterval(x);
+                }, 50);
+            }
         </script>
     </body>
     </html>
     """
-    return render_template_string(html, t=t, user=user, coins=coins)
+    return render_template_string(html, remaining=remaining, user=user, coins=coins)
 
 def send_tele(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try: requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
     except: pass
 
-# --- LOGIC QUÉT DỮ LIỆU ĐA ĐIỂM ---
+# --- LOGIC CHỜ THÔNG MINH ---
 async def start_tracking(username, loop):
     if username in ACTIVE_CLIENTS: return
     clean_name = username.replace("@", "").strip()
@@ -91,35 +120,41 @@ async def start_tracking(username, loop):
         try:
             raw_data = str(vars(event))
             
-            # Quét Xu (Hỗ trợ cả rương và túi mới)
             match_coins = re.search(r"string_value='(\d+)'", raw_data)
             coins = match_coins.group(1) if match_coins else "0"
             if coins == "0":
                 alt_coins = re.search(r"['\"]?(?:coin|score|diamond_count)['\"]?[:=]\s*(\d+)", raw_data, re.I)
                 coins = alt_coins.group(1) if alt_coins else "0"
-            
             if coins == "0": return
 
-            # Quét Số người nhặt
             match_people = re.search(r"(?:can_win_count|winner_count|winner_num|people_count)[:=]\s*(\d+)", raw_data, re.I)
             people = match_people.group(1) if match_people else "Nhiều"
 
-            # Quét Thời gian chờ (Fix lỗi 0 giây)
-            match_time = re.search(r"(?:wait_time|duration|release_time|time|wait)[:=]\s*(\d+)", raw_data, re.I)
+            match_time = re.search(r"(?:wait_time|duration)['\"]?[:=]\s*(\d+)", raw_data, re.I)
             wait_sec = int(match_time.group(1)) if match_time else 0
+            if wait_sec == 0:
+                match_t = re.search(r"\btime['\"]?[:=]\s*(\d{1,4})\b", raw_data, re.I)
+                wait_sec = int(match_t.group(1)) if match_t else 180
+
+            event_ts = int(time.time())
+            delay_time = wait_sec - NOTIFY_TIME 
             
-            # Chống lỗi dữ liệu rác (nếu trả về timestamp quá dài)
-            if wait_sec > 1000: wait_sec = 120 
+            if delay_time > 0:
+                await asyncio.sleep(delay_time)
 
-            target_ts = int(time.time()) + wait_sec
-            timer_url = f"{WEB_URL}/timer?t={target_ts}&user={clean_name}&c={coins}"
+            current_elapsed = int(time.time()) - event_ts
+            actual_remaining = wait_sec - current_elapsed
+            if actual_remaining < 0: actual_remaining = 0
 
-            msg = (f"🎁 <b>PHÁT HIỆN RƯƠNG!</b>\n\n"
-                   f"👤 <b>Kênh:</b> @{clean_name}\n"
-                   f"💰 <b>Trị giá:</b> {coins} Xu / {people} người\n"
-                   f"⏱ <b>Mở sau:</b> {wait_sec} giây\n\n"
-                   f"👉 <a href='{timer_url}'>BẤM VÀO ĐÂY ĐỂ MỞ ĐỒNG HỒ</a>")
-            send_tele(msg)
+            if actual_remaining > 0:
+                timer_url = f"{WEB_URL}/timer?ts={event_ts}&w={wait_sec}&user={clean_name}&c={coins}"
+
+                msg = (f"🔥 <b>RƯƠNG SẮP MỞ! (VÀO GẤP)</b>\n\n"
+                       f"👤 <b>Kênh:</b> @{clean_name}\n"
+                       f"💰 <b>Trị giá:</b> {coins} Xu / {people} người\n"
+                       f"⏱ <b>Mở sau:</b> {actual_remaining} giây\n\n"
+                       f"👉 <a href='{timer_url}'>BẤM MỞ ĐỒNG HỒ & CHUẨN BỊ LỤM</a>")
+                send_tele(msg)
         except: pass
 
     try: await client.start()
@@ -127,7 +162,7 @@ async def start_tracking(username, loop):
 
 def tele_worker(loop):
     last_id = 0
-    send_tele("🚀 <b>Hệ thống Săn Rương Pro v5.2 đã Online!</b>\nĐã tích hợp đồng hồ tại: <code>tiktok-bot-live.onrender.com</code>")
+    send_tele(f"🚀 <b>Hệ thống v5.6 (Milli-Sniper) Online!</b>\nĐồng hồ web đã hỗ trợ nhảy số thập phân.")
     while True:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={last_id + 1}&timeout=20"
