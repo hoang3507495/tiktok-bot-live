@@ -7,11 +7,18 @@ import os
 import asyncio
 import time
 
-# --- CẤU HÌNH ---
+# --- CẤU HÌNH WEB SERVER ---
 app = Flask('')
-@app.route('/')
-def home(): return "Bot Hunter Pro v3 is Live!"
 
+@app.route('/')
+def home():
+    return "Bot is Active!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# --- CẤU HÌNH CHÍNH ---
 TELEGRAM_TOKEN = "8701996946:AAHcxrWvB7C1t1QURjS1k4ibKxDUuNfJzuw"
 TELEGRAM_CHAT_ID = "1882718625"
 ACTIVE_CLIENTS = {}
@@ -19,50 +26,56 @@ ACTIVE_CLIENTS = {}
 def send_tele(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"})
-    except: pass
+        requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
+    except:
+        pass
 
-# --- XỬ LÝ THEO DÕI TIKTOK ---
+# --- THEO DÕI TIKTOK ---
 async def start_tracking(username, loop):
-    if username in ACTIVE_CLIENTS: return
+    if username in ACTIVE_CLIENTS:
+        return
     
-    clean_name = username.replace("@", "")
+    clean_name = username.replace("@", "").strip()
     client = TikTokLiveClient(unique_id=clean_name)
     ACTIVE_CLIENTS[username] = client
 
     @client.on(ConnectEvent)
     async def on_connect(event: ConnectEvent):
-        send_tele(f"✅ <b>Đã kết nối:</b> @{clean_name}")
+        send_tele(f"✅ <b>Đã kết nối thành công:</b> @{clean_name}")
 
     @client.on(EnvelopeEvent)
     async def on_envelope(event: EnvelopeEvent):
-        # Lấy dữ liệu rương (Sửa lỗi nhận diện thuộc tính)
         try:
+            # Lấy thông số rương linh hoạt theo phiên bản thư viện
             coins = getattr(event, 'coins', 0)
             people = getattr(event, 'can_win_count', 0)
             wait_time = getattr(event, 'wait_time', "...")
-            
-            if coins == 0: return # Chống rương ảo
 
-            msg = (f"🎁 <b>CÓ RƯƠNG THẬT!</b>\n\n👤 <b>Kênh:</b> @{clean_name}\n"
-                   f"💰 <b>Trị giá:</b> {coins} Xu / {people} người\n⏳ <b>Chờ:</b> {wait_time}s\n"
-                   f"🔗 <a href='https://www.tiktok.com/@{clean_name}/live'>VÀO NHẶT NGAY</a>")
-            send_tele(msg)
-        except: pass
+            if coins > 0:
+                msg = (f"🎁 <b>PHÁT HIỆN RƯƠNG!</b>\n\n"
+                       f"👤 <b>Kênh:</b> @{clean_name}\n"
+                       f"💰 <b>Trị giá:</b> {coins} Xu / {people} người\n"
+                       f"⏳ <b>Chờ:</b> {wait_time}s\n"
+                       f"🔗 <a href='https://www.tiktok.com/@{clean_name}/live'>VÀO NHẶT NGAY</a>")
+                send_tele(msg)
+        except:
+            pass
 
     try:
         await client.start()
     except:
         ACTIVE_CLIENTS.pop(username, None)
 
-# --- QUÉT TIN NHẮN TELEGRAM (Dùng Thread riêng) ---
+# --- QUÉT LỆNH TELEGRAM ---
 def tele_worker(loop):
     last_id = 0
-    send_tele("🚀 <b>Hệ thống khởi động lại thành công!</b>")
+    # Thông báo khi hệ thống thực sự khởi động xong
+    send_tele("🚀 <b>Hệ thống Săn Rương đã Online!</b>\nGõ @tên_kênh để bắt đầu.")
+    
     while True:
         try:
-            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={last_id + 1}&timeout=10"
-            r = requests.get(url, timeout=15).json()
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={last_id + 1}&timeout=20"
+            r = requests.get(url, timeout=25).json()
             if "result" in r:
                 for update in r["result"]:
                     last_id = update["update_id"]
@@ -72,22 +85,29 @@ def tele_worker(loop):
                         if cmd.startswith("@") or (len(cmd) > 2 and " " not in cmd):
                             target = cmd if cmd.startswith("@") else f"@{cmd}"
                             send_tele(f"⏳ Đang kết nối tới {target}...")
+                            # Đưa việc kết nối vào loop chạy ngầm
                             asyncio.run_coroutine_threadsafe(start_tracking(target, loop), loop)
                         
                         elif cmd == "/list":
                             names = list(ACTIVE_CLIENTS.keys())
-                            send_tele(f"📝 Đang xem {len(names)} kênh:\n" + ("\n".join(names) if names else "Trống"))
-        except: pass
-        time.sleep(2)
+                            status = f"📝 Đang xem {len(names)} kênh:\n" + ("\n".join(names) if names else "Chưa có kênh nào.")
+                            send_tele(status)
+        except:
+            time.sleep(5)
+        time.sleep(1)
 
-# --- CHẠY ---
+# --- KHỞI CHẠY TỔNG HỢP ---
 if __name__ == '__main__':
-    # Tạo loop chạy ngầm
-    new_loop = asyncio.new_event_loop()
-    def run_loop(l):
-        asyncio.set_event_loop(l)
-        l.run_forever()
+    # 1. Chạy Flask Web Server ở luồng riêng
+    Thread(target=run_flask, daemon=True).start()
+    
+    # 2. Tạo Event Loop cho TikTok ở luồng riêng
+    tiktok_loop = asyncio.new_event_loop()
+    def run_tiktok_loop(loop):
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
+    Thread(target=run_tiktok_loop, args=(tiktok_loop,), daemon=True).start()
+    
+    # 3. Chạy quét Telegram ở luồng chính (giữ bot luôn thức)
+    tele_worker(tiktok_loop)
 
-    Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))).start()
-    Thread(target=run_loop, args=(new_loop,)).start()
-    tele_worker(new_loop)
