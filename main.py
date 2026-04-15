@@ -18,7 +18,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home(): 
-    return "Bot Hunter v5.9.1 (Tele-Scanner) is Running!"
+    return "Bot Hunter v6.0 (Ultimate Unpack_At) is Running!"
 
 @app.route('/timer')
 def timer():
@@ -106,51 +106,51 @@ async def start_tracking(username, loop, force_time=0):
 
     @client.on(ConnectEvent)
     async def on_connect(event: ConnectEvent):
-        mode_text = f"Ép đếm {force_time}s" if force_time > 0 else "Tự động đếm"
-        send_tele(f"✅ <b>Đã vào phòng:</b> @{clean_name}\nChế độ: {mode_text}\nSẵn sàng bắn X-Quang.")
+        mode_text = f"Ép đếm {force_time}s" if force_time > 0 else "Quét thông minh (Unpack_At)"
+        send_tele(f"✅ <b>Đã vào phòng:</b> @{clean_name}\nChế độ: {mode_text}")
 
     @client.on(EnvelopeEvent)
     async def on_envelope(event: EnvelopeEvent):
         raw_data = str(vars(event))
         
-        # --- BẮN X-QUANG LÊN TELEGRAM ---
         try:
-            # Cắt ngắn 3500 ký tự để tránh Telegram chặn vì tin nhắn quá dài
-            safe_data = raw_data[:3500] + ("\n...[ĐÃ CẮT BỚT VÌ QUÁ DÀI]" if len(raw_data) > 3500 else "")
-            xray_msg = (f"🛠 <b>[X-QUANG] DỮ LIỆU TỪ @{clean_name}</b>\n"
-                        f"<i>(Chạm vào code bên dưới để copy)</i>\n"
-                        f"<code>{safe_data}</code>")
-            send_tele(xray_msg)
-        except: pass
-        # ---------------------------------
-
-        try:
-            match_coins = re.search(r"string_value='(\d+)'", raw_data)
+            # 1. TÌM XU (Cập nhật lấy diamond_count trước)
+            match_coins = re.search(r"diamond_count[:=]\s*(\d+)", raw_data, re.I)
             coins = match_coins.group(1) if match_coins else "?"
             if coins == "?":
-                alt_coins = re.search(r"['\"]?(?:coin|score|diamond_count)['\"]?[:=]\s*(\d+)", raw_data, re.I)
+                alt_coins = re.search(r"['\"]?(?:coin|score|string_value)['\"]?[:=]\s*['\"]?(\d+)['\"]?", raw_data, re.I)
                 coins = alt_coins.group(1) if alt_coins else "?"
 
-            match_people = re.search(r"(?:can_win_count|winner_count|winner_num|people_count)[:=]\s*(\d+)", raw_data, re.I)
+            # 2. TÌM NGƯỜI
+            match_people = re.search(r"(?:people_count|can_win_count|winner_count)[:=]\s*(\d+)", raw_data, re.I)
             people = match_people.group(1) if match_people else "?"
 
             wait_sec = 0
             if force_time > 0:
                 wait_sec = force_time
             else:
-                current_ms = int(time.time() * 1000)
-                all_13_digits = re.findall(r"\b(17\d{11})\b", raw_data)
-                for ts_str in all_13_digits:
-                    diff_sec = (int(ts_str) - current_ms) / 1000
-                    if 10 < diff_sec <= 600: wait_sec = int(diff_sec); break 
+                current_time_sec = int(time.time())
+                
+                # --- CHÌA KHÓA VÀNG: UNPACK_AT ---
+                match_unpack = re.search(r"unpack_at[:=]\s*['\"]?(\d{10,13})\b", raw_data)
+                if match_unpack:
+                    unpack_val = int(match_unpack.group(1))
+                    # Nếu là 10 chữ số (giây)
+                    if unpack_val < 10000000000:
+                        wait_sec = unpack_val - current_time_sec
+                    # Nếu là 13 chữ số (mili-giây)
+                    else:
+                        wait_sec = int((unpack_val - (current_time_sec * 1000)) / 1000)
 
-                if wait_sec == 0:
-                    time_matches = re.findall(r"['\"]?[a-zA-Z_]*(?:time|duration|delay)['\"]?[:=]\s*['\"]?(\d{2,4})\b", raw_data, re.I)
-                    for m in time_matches:
-                        val = int(m)
-                        if 30 <= val <= 600: wait_sec = val; break
+                # Nếu bị giấu unpack_at, quét dự phòng
+                if wait_sec <= 0:
+                    current_ms = current_time_sec * 1000
+                    all_13_digits = re.findall(r"\b(17\d{11})\b", raw_data)
+                    for ts_str in all_13_digits:
+                        diff_sec = (int(ts_str) - current_ms) / 1000
+                        if 10 < diff_sec <= 600: wait_sec = int(diff_sec); break 
 
-                if wait_sec == 0: wait_sec = 180 
+                if wait_sec <= 0: wait_sec = 180 
 
             event_ts = int(time.time())
             current_elapsed = int(time.time()) - event_ts
@@ -165,6 +165,11 @@ async def start_tracking(username, loop, force_time=0):
                        f"⏱ <b>Mở sau:</b> {actual_remaining} giây\n\n"
                        f"👉 <a href='{timer_url}'><b>BẤM MỞ ĐỒNG HỒ & CHUẨN BỊ LỤM</b></a>")
                 send_tele(msg)
+                
+                # Ẩn máy X-QUANG đi cho đỡ phiền, nếu muốn hiện lại hãy bỏ dấu # ở 3 dòng dưới
+                # xray_safe = raw_data[:3500]
+                # xray_msg = f"🛠 <b>[X-QUANG] DỮ LIỆU TỪ @{clean_name}</b>\n<code>{xray_safe}</code>"
+                # send_tele(xray_msg)
         except: pass
 
     try: await client.start()
@@ -174,7 +179,7 @@ def tele_worker(loop):
     last_id = 0
     try: requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset=-1")
     except: pass
-    send_tele(f"🚀 <b>Hệ thống v5.9.1 Sẵn sàng!</b>\n- Bắn thẳng X-Quang lên Telegram.\n- Hỗ trợ ép giờ: gõ @tenkenh 1 (rương 1 phút).")
+    send_tele(f"🚀 <b>Hệ thống v6.0 (Ultimate Unpack_At) Sẵn sàng!</b>\nĐã giải mã thành công thuật toán mới của TikTok.")
     while True:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={last_id + 1}&timeout=20"
