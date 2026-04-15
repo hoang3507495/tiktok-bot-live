@@ -8,6 +8,7 @@ import asyncio
 import time
 import re
 
+# --- CẤU HÌNH HỆ THỐNG ---
 WEB_URL = "https://tiktok-bot-live.onrender.com" 
 TELEGRAM_TOKEN = "8701996946:AAHcxrWvB7C1t1QURjS1k4ibKxDUuNfJzuw"
 TELEGRAM_CHAT_ID = "1882718625"
@@ -17,14 +18,15 @@ app = Flask(__name__)
 
 @app.route('/')
 def home(): 
-    return "Bot Hunter v5.8.8 (Deep X-Ray) is Running!"
+    return "Bot Hunter v5.9.1 (Tele-Scanner) is Running!"
 
 @app.route('/timer')
 def timer():
     ts = request.args.get('ts', 0, type=int)
     w = request.args.get('w', 0, type=int)
     user = request.args.get('user', 'TikTok')
-    coins = request.args.get('c', '0')
+    coins = request.args.get('c', '...')
+    
     elapsed = int(time.time()) - ts
     remaining = w - elapsed - 2 
     if remaining < 0: remaining = 0
@@ -39,7 +41,7 @@ def timer():
             body { background-color: #000; color: #fff; font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
             .info { font-size: 24px; color: #ff2d55; margin-bottom: 5px; font-weight: bold;}
             .coins { font-size: 18px; color: #8e8e93; margin-bottom: 20px;}
-            .timer { font-size: 95px; font-weight: 200; font-variant-numeric: tabular-nums; letter-spacing: -2px; display: flex; align-items: baseline; justify-content: center;}
+            .timer { font-size: 95px; font-weight: 200; font-variant-numeric: tabular-nums; letter-spacing: -2px; line-height: 1; display: flex; align-items: baseline; justify-content: center; width: 100%;}
             .timer .ms { font-size: 60px; color: #a1a1a6; margin-left: 2px;}
             .controls { display: flex; gap: 10px; margin-top: 20px; }
             .ctrl-btn { background-color: #1c1c1e; color: #0a84ff; border: 1px solid #3a3a3c; padding: 10px 15px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
@@ -60,14 +62,30 @@ def timer():
             var remainingSeconds = {{remaining}};
             var targetTime = Date.now() + remainingSeconds * 1000;
             var timerInterval;
-            function adjustTime(seconds) { targetTime += seconds * 1000; clearInterval(timerInterval); document.getElementById("time").style.color = "#fff"; startTimer(); }
-            function updateDisplay() {
-                var distance = targetTime - Date.now();
-                if (distance <= 0) { document.getElementById("time").innerHTML = "00:00<span class='ms'>.0</span>"; document.getElementById("time").style.color = "#32d74b"; return true; }
-                var m = Math.floor(distance / 60000); var s = Math.floor((distance % 60000) / 1000); var ms = Math.floor((distance % 1000) / 100);
-                document.getElementById("time").innerHTML = (m<10?"0"+m:m) + ":" + (s<10?"0"+s:s) + "<span class='ms'>." + ms + "</span>"; return false;
+            function adjustTime(seconds) {
+                targetTime += seconds * 1000;
+                clearInterval(timerInterval);
+                document.getElementById("time").style.color = "#fff";
+                startTimer();
             }
-            function startTimer() { updateDisplay(); timerInterval = setInterval(function() { if (updateDisplay()) clearInterval(timerInterval); }, 50); }
+            function updateDisplay() {
+                var now = Date.now();
+                var distance = targetTime - now;
+                if (distance <= 0) {
+                    document.getElementById("time").innerHTML = "00:00<span class='ms'>.0</span>";
+                    document.getElementById("time").style.color = "#32d74b";
+                    return true;
+                }
+                var m = Math.floor(distance / 60000);
+                var s = Math.floor((distance % 60000) / 1000);
+                var ms = Math.floor((distance % 1000) / 100);
+                document.getElementById("time").innerHTML = (m<10?"0"+m:m) + ":" + (s<10?"0"+s:s) + "<span class='ms'>." + ms + "</span>";
+                return false;
+            }
+            function startTimer() {
+                updateDisplay();
+                timerInterval = setInterval(function() { if (updateDisplay()) clearInterval(timerInterval); }, 50);
+            }
             startTimer();
         </script>
     </body>
@@ -80,58 +98,59 @@ def send_tele(msg):
     try: requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
     except: pass
 
-async def start_tracking(username, loop):
+async def start_tracking(username, loop, force_time=0):
     if username in ACTIVE_CLIENTS: return
     clean_name = username.replace("@", "").strip()
     client = TikTokLiveClient(unique_id=clean_name)
     ACTIVE_CLIENTS[username] = client
 
+    @client.on(ConnectEvent)
+    async def on_connect(event: ConnectEvent):
+        mode_text = f"Ép đếm {force_time}s" if force_time > 0 else "Tự động đếm"
+        send_tele(f"✅ <b>Đã vào phòng:</b> @{clean_name}\nChế độ: {mode_text}\nSẵn sàng bắn X-Quang.")
+
     @client.on(EnvelopeEvent)
     async def on_envelope(event: EnvelopeEvent):
         raw_data = str(vars(event))
         
-        # --- MÁY CHỤP X-QUANG LÕI TIKTOK ---
-        print("\n" + "🔥"*20)
-        print(f"🚨 PHÁT HIỆN RƯƠNG TỪ: {clean_name}")
-        
-        # Thử in thẳng vào lõi thông tin (Nơi giấu giờ đếm ngược)
-        if hasattr(event, 'envelope_info'):
-            print(f"🎯 LÕI ENVELOPE: {event.envelope_info}")
-        if hasattr(event, 'treasure_box_user'):
-            print(f"🎯 LÕI TREASURE BOX: {event.treasure_box_user}")
-        
-        # Dùng Regex moi móc thẳng mọi chữ có chữ "time", "duration" trong cục dữ liệu thô
-        hidden_times = re.findall(r"['\"]?[a-zA-Z_]*(?:time|duration|delay|countdown)['\"]?[:=]\s*['\"]?(\d{2,13})\b", raw_data, re.I)
-        print(f"🕒 CÁC SỐ THỜI GIAN/TIMESTAMP QUÉT ĐƯỢC: {hidden_times}")
-        print("🔥"*20 + "\n")
-        # ------------------------------------
+        # --- BẮN X-QUANG LÊN TELEGRAM ---
+        try:
+            # Cắt ngắn 3500 ký tự để tránh Telegram chặn vì tin nhắn quá dài
+            safe_data = raw_data[:3500] + ("\n...[ĐÃ CẮT BỚT VÌ QUÁ DÀI]" if len(raw_data) > 3500 else "")
+            xray_msg = (f"🛠 <b>[X-QUANG] DỮ LIỆU TỪ @{clean_name}</b>\n"
+                        f"<i>(Chạm vào code bên dưới để copy)</i>\n"
+                        f"<code>{safe_data}</code>")
+            send_tele(xray_msg)
+        except: pass
+        # ---------------------------------
 
         try:
             match_coins = re.search(r"string_value='(\d+)'", raw_data)
-            coins = match_coins.group(1) if match_coins else "0"
-            if coins == "0":
+            coins = match_coins.group(1) if match_coins else "?"
+            if coins == "?":
                 alt_coins = re.search(r"['\"]?(?:coin|score|diamond_count)['\"]?[:=]\s*(\d+)", raw_data, re.I)
-                coins = alt_coins.group(1) if alt_coins else "0"
-            if coins == "0": return
+                coins = alt_coins.group(1) if alt_coins else "?"
 
             match_people = re.search(r"(?:can_win_count|winner_count|winner_num|people_count)[:=]\s*(\d+)", raw_data, re.I)
-            people = match_people.group(1) if match_people else "Nhiều"
+            people = match_people.group(1) if match_people else "?"
 
             wait_sec = 0
-            current_ms = int(time.time() * 1000)
+            if force_time > 0:
+                wait_sec = force_time
+            else:
+                current_ms = int(time.time() * 1000)
+                all_13_digits = re.findall(r"\b(17\d{11})\b", raw_data)
+                for ts_str in all_13_digits:
+                    diff_sec = (int(ts_str) - current_ms) / 1000
+                    if 10 < diff_sec <= 600: wait_sec = int(diff_sec); break 
 
-            all_13_digits = re.findall(r"\b(17\d{11})\b", raw_data)
-            for ts_str in all_13_digits:
-                diff_sec = (int(ts_str) - current_ms) / 1000
-                if 10 < diff_sec <= 600: wait_sec = int(diff_sec); break 
+                if wait_sec == 0:
+                    time_matches = re.findall(r"['\"]?[a-zA-Z_]*(?:time|duration|delay)['\"]?[:=]\s*['\"]?(\d{2,4})\b", raw_data, re.I)
+                    for m in time_matches:
+                        val = int(m)
+                        if 30 <= val <= 600: wait_sec = val; break
 
-            if wait_sec == 0:
-                time_matches = re.findall(r"['\"]?[a-zA-Z_]*(?:time|duration|delay)['\"]?[:=]\s*['\"]?(\d{2,4})\b", raw_data, re.I)
-                for m in time_matches:
-                    val = int(m)
-                    if 30 <= val <= 600: wait_sec = val; break
-
-            if wait_sec == 0: wait_sec = 180 
+                if wait_sec == 0: wait_sec = 180 
 
             event_ts = int(time.time())
             current_elapsed = int(time.time()) - event_ts
@@ -140,11 +159,11 @@ async def start_tracking(username, loop):
 
             if actual_remaining > 0:
                 timer_url = f"{WEB_URL}/timer?ts={event_ts}&w={wait_sec}&user={clean_name}&c={coins}"
-                msg = (f"🔥 <b>PHÁT HIỆN RƯƠNG!</b>\n"
+                msg = (f"🔥 <b>PHÁT HIỆN RƯƠNG!</b>\n\n"
                        f"👤 <b>Kênh:</b> @{clean_name}\n"
                        f"💰 <b>Trị giá:</b> {coins} Xu / {people} người\n"
-                       f"⏱ <b>Mở sau:</b> {actual_remaining} giây\n"
-                       f"👉 <a href='{timer_url}'><b>BẤM MỞ ĐỒNG HỒ</b></a>")
+                       f"⏱ <b>Mở sau:</b> {actual_remaining} giây\n\n"
+                       f"👉 <a href='{timer_url}'><b>BẤM MỞ ĐỒNG HỒ & CHUẨN BỊ LỤM</b></a>")
                 send_tele(msg)
         except: pass
 
@@ -155,7 +174,7 @@ def tele_worker(loop):
     last_id = 0
     try: requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset=-1")
     except: pass
-    send_tele(f"🚀 <b>Máy quét X-QUANG v5.8.8 đã kích hoạt!</b>")
+    send_tele(f"🚀 <b>Hệ thống v5.9.1 Sẵn sàng!</b>\n- Bắn thẳng X-Quang lên Telegram.\n- Hỗ trợ ép giờ: gõ @tenkenh 1 (rương 1 phút).")
     while True:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={last_id + 1}&timeout=20"
@@ -169,9 +188,16 @@ def tele_worker(loop):
                             names = list(ACTIVE_CLIENTS.keys())
                             send_tele(f"📝 Đang xem: " + ", ".join(names) if names else "Trống")
                         elif text.startswith("@") or (len(text) > 2 and " " not in text and "/" not in text):
-                            target = text if text.startswith("@") else f"@{text}"
-                            send_tele(f"⏳ Đang vào phòng {target}...")
-                            asyncio.run_coroutine_threadsafe(start_tracking(target, loop), loop)
+                            parts = text.split()
+                            target = parts[0]
+                            if not target.startswith("@"): target = f"@{target}"
+                            
+                            force_time = 0
+                            if len(parts) > 1 and parts[1].isdigit():
+                                force_time = int(parts[1]) * 60 
+                            
+                            send_tele(f"⏳ Đang kết nối tới {target}...")
+                            asyncio.run_coroutine_threadsafe(start_tracking(target, loop, force_time), loop)
         except: time.sleep(1)
 
 if __name__ == '__main__':
@@ -179,4 +205,3 @@ if __name__ == '__main__':
     tiktok_loop = asyncio.new_event_loop()
     Thread(target=lambda: (asyncio.set_event_loop(tiktok_loop), tiktok_loop.run_forever()), daemon=True).start()
     tele_worker(tiktok_loop)
-
