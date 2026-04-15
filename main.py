@@ -7,22 +7,23 @@ import os
 import asyncio
 import time
 import re
-from datetime import datetime, timedelta
 
 # --- CẤU HÌNH HỆ THỐNG ---
+# Link render của bạn: https://tiktok-bot-live.onrender.com/
 WEB_URL = "https://tiktok-bot-live.onrender.com" 
 
 TELEGRAM_TOKEN = "8701996946:AAHcxrWvB7C1t1QURjS1k4ibKxDUuNfJzuw"
 TELEGRAM_CHAT_ID = "1882718625"
 ACTIVE_CLIENTS = {}
 
+# Mặc định báo trước 45 giây
 NOTIFY_TIME = 45 
 
 app = Flask(__name__)
 
 @app.route('/')
 def home(): 
-    return "Bot Hunter v6.7 (Stable Build) is Running!"
+    return "Bot Hunter v5.9 (Sniper Edition) is Running!"
 
 @app.route('/timer')
 def timer():
@@ -40,56 +41,83 @@ def timer():
     <html>
     <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-        <title>Đếm ngược Rương</title>
+        <title>Đếm ngược Sniper</title>
         <style>
-            body { background-color: #000; color: #fff; font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+            body { background-color: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
             .info { font-size: 24px; color: #ff2d55; margin-bottom: 5px; font-weight: bold;}
             .coins { font-size: 18px; color: #8e8e93; margin-bottom: 20px;}
+            
             .timer { font-size: 95px; font-weight: 200; font-variant-numeric: tabular-nums; letter-spacing: -2px; line-height: 1; display: flex; align-items: baseline; justify-content: center; width: 100%;}
             .timer .ms { font-size: 60px; color: #a1a1a6; margin-left: 2px;}
+            
             .controls { display: flex; gap: 10px; margin-top: 20px; }
             .ctrl-btn { background-color: #1c1c1e; color: #0a84ff; border: 1px solid #3a3a3c; padding: 10px 15px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
-            .btn { margin-top: 40px; padding: 18px 0; background-color: #ff2d55; color: white; text-decoration: none; border-radius: 15px; font-size: 20px; font-weight: 600; width: 85%; text-align: center; }
+            .ctrl-btn:active { background-color: #3a3a3c; }
+
+            .btn { margin-top: 40px; padding: 18px 0; background-color: #ff2d55; color: white; text-decoration: none; border-radius: 15px; font-size: 20px; font-weight: 600; width: 85%; text-align: center; box-shadow: 0 4px 15px rgba(255, 45, 85, 0.3); }
+            .btn:active { transform: scale(0.98); opacity: 0.9; }
         </style>
     </head>
     <body>
         <div class="info">@{{user}}</div>
         <div class="coins">🎁 Rương: {{coins}} Xu</div>
+        
         <div class="timer" id="time">00:00<span class="ms">.0</span></div>
+        
         <div class="controls">
             <button class="ctrl-btn" onclick="adjustTime(-60)">-1 Phút</button>
             <button class="ctrl-btn" onclick="adjustTime(60)">+1 Phút</button>
             <button class="ctrl-btn" onclick="adjustTime(120)">+2 Phút</button>
         </div>
+
         <a href="https://www.tiktok.com/@{{user}}/live" class="btn">MỞ TIKTOK NGAY</a>
+        
         <script>
             var remainingSeconds = {{remaining}};
             var targetTime = Date.now() + remainingSeconds * 1000;
             var timerInterval;
+
             function adjustTime(seconds) {
                 targetTime += seconds * 1000;
                 clearInterval(timerInterval);
                 document.getElementById("time").style.color = "#fff";
+                document.getElementById("time").style.fontWeight = "200";
+                var msElem = document.querySelector('.ms');
+                if(msElem) msElem.style.color = "#a1a1a6";
                 startTimer();
             }
+
             function updateDisplay() {
                 var now = Date.now();
                 var distance = targetTime - now;
+
                 if (distance <= 0) {
                     document.getElementById("time").innerHTML = "00:00<span class='ms'>.0</span>";
                     document.getElementById("time").style.color = "#32d74b";
+                    document.getElementById("time").style.fontWeight = "bold";
+                    var msElem = document.querySelector('.ms');
+                    if(msElem) msElem.style.color = "#32d74b";
                     return true;
                 }
+
                 var m = Math.floor(distance / 60000);
                 var s = Math.floor((distance % 60000) / 1000);
                 var ms = Math.floor((distance % 1000) / 100);
-                document.getElementById("time").innerHTML = (m<10?"0"+m:m) + ":" + (s<10?"0"+s:s) + "<span class='ms'>." + ms + "</span>";
+
+                var mStr = m < 10 ? "0" + m : m;
+                var sStr = s < 10 ? "0" + s : s;
+                
+                document.getElementById("time").innerHTML = mStr + ":" + sStr + "<span class='ms'>." + ms + "</span>";
                 return false;
             }
+
             function startTimer() {
                 updateDisplay();
-                timerInterval = setInterval(function() { if (updateDisplay()) clearInterval(timerInterval); }, 50);
+                timerInterval = setInterval(function() {
+                    if (updateDisplay()) clearInterval(timerInterval);
+                }, 50);
             }
+
             startTimer();
         </script>
     </body>
@@ -102,7 +130,6 @@ def send_tele(msg):
     try: requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
     except: pass
 
-# --- LOGIC QUÉT ---
 async def start_tracking(username, loop):
     if username in ACTIVE_CLIENTS: return
     clean_name = username.replace("@", "").strip()
@@ -126,14 +153,7 @@ async def start_tracking(username, loop):
             if coins == "0": return
 
             match_people = re.search(r"(?:can_win_count|winner_count|winner_num|people_count)[:=]\s*(\d+)", raw_data, re.I)
-            people = match_people.group(1) if match_people else "1"
-
-            flag = "🏳️" 
-            m_region = re.search(r"['\"]?(?:region|country|country_code)['\"]?[:=]\s*['\"]([a-zA-Z]{2})['\"]", raw_data, re.I)
-            if m_region:
-                c_code = m_region.group(1).upper()
-                try: flag = chr(ord(c_code[0]) + 127397) + chr(ord(c_code[1]) + 127397)
-                except: pass
+            people = match_people.group(1) if match_people else "Nhiều"
 
             wait_sec = 0
             current_ms = int(time.time() * 1000)
@@ -150,8 +170,6 @@ async def start_tracking(username, loop):
 
             event_ts = int(time.time())
             delay_time = wait_sec - NOTIFY_TIME 
-            
-            # Bot nằm im ngủ chờ đến 45 giây cuối
             if delay_time > 0:
                 await asyncio.sleep(delay_time)
 
@@ -159,33 +177,22 @@ async def start_tracking(username, loop):
             actual_remaining = wait_sec - current_elapsed
             if actual_remaining < 0: actual_remaining = 0
 
-            # Lúc này bot đã nằm trong phòng đủ lâu, hệ thống tự có biến viewer_count
-            live_viewers = getattr(client, 'viewer_count', '...')
-            if live_viewers is None: live_viewers = '...'
-            
-            room_id = getattr(client, 'room_id', '...')
-            vn_time = (datetime.utcnow() + timedelta(hours=7)).strftime("%H:%M:%S")
-
             if actual_remaining > 0:
                 timer_url = f"{WEB_URL}/timer?ts={event_ts}&w={wait_sec}&user={clean_name}&c={coins}"
-
-                msg = (f"👤 <b>KÊNH :</b> @{clean_name} ({room_id})\n"
-                       f"🎁 <b>RƯƠNG :</b> {coins} /{people} {flag}\n"
-                       f"⏱ <b>Mở Sau :</b> {actual_remaining}s - {vn_time}\n"
-                       f"👀 <b>:</b> {live_viewers}\n"
-                       f"👉 <a href='{timer_url}'><b>ĐỒNG HỒ ĐẾM NGƯỢC</b></a>\n"
-                       f"› tiktok.com/share/live/{room_id}")
-                
+                msg = (f"🔥 <b>RƯƠNG SẮP MỞ! (VÀO GẤP)</b>\n\n"
+                       f"👤 <b>Kênh:</b> @{clean_name}\n"
+                       f"💰 <b>Trị giá:</b> {coins} Xu / {people} người\n"
+                       f"⏱ <b>Mở sau:</b> {actual_remaining} giây\n\n"
+                       f"👉 <a href='{timer_url}'><b>BẤM MỞ ĐỒNG HỒ & CHUẨN BỊ LỤM</b></a>")
                 send_tele(msg)
-        except Exception as e:
-            pass
+        except: pass
 
     try: await client.start()
     except: ACTIVE_CLIENTS.pop(username, None)
 
 def tele_worker(loop):
     last_id = 0
-    send_tele("🚀 <b>Hệ thống v6.7 (Stable Build) Online!</b>\nĐã sửa xong lỗi sập nguồn.")
+    send_tele(f"🚀 <b>Hệ thống v5.9 (Sniper Edition) Online!</b>")
     while True:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={last_id + 1}&timeout=20"
