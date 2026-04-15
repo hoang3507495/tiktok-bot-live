@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot Săn Rương (Chế độ TEST) is Active!"
+    return "Bot X-Ray is Active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -41,37 +41,34 @@ async def start_tracking(username, loop):
 
     @client.on(ConnectEvent)
     async def on_connect(event: ConnectEvent):
-        send_tele(f"✅ <b>Đã vào phòng Live:</b> @{clean_name}\nĐang trực rương...")
+        send_tele(f"✅ <b>Đã vào phòng:</b> @{clean_name}\nĐang bật máy quét X-Quang...")
 
     @client.on(EnvelopeEvent)
     async def on_envelope(event: EnvelopeEvent):
         try:
-            # Bản test: Bắt mọi thông số có thể, nếu không có thì báo 'Không rõ'
-            coins = getattr(event, 'coins', getattr(event, 'treasure_box', {}).get('coins', 'Không rõ'))
-            people = getattr(event, 'can_win_count', getattr(event, 'treasure_box', {}).get('can_win_count', 'Không rõ'))
-            wait_time = getattr(event, 'wait_time', getattr(event, 'treasure_box', {}).get('time', 'Không rõ'))
-
-            # Bản Test: BÁO MỌI RƯƠNG (Không cần > 0)
-            msg = (f"🛠 <b>[TEST] CÓ DỮ LIỆU RƯƠNG!</b>\n\n"
+            # LẤY TOÀN BỘ DỮ LIỆU THÔ (RAW DATA)
+            # Quét tất cả các thuộc tính bên trong gói tin rương/túi
+            raw_dict = str(vars(event))
+            
+            msg = (f"🛠 <b>[X-QUANG] BẮT ĐƯỢC GÓI TIN!</b>\n\n"
                    f"👤 <b>Kênh:</b> @{clean_name}\n"
-                   f"💰 <b>Dữ liệu Xu:</b> {coins}\n"
-                   f"👥 <b>Người nhặt:</b> {people}\n"
-                   f"⏳ <b>Thời gian:</b> {wait_time}\n"
-                   f"🔗 <a href='https://www.tiktok.com/@{clean_name}/live'>VÀO LIVE KIỂM TRA NGAY</a>")
+                   f"🔍 <b>DỮ LIỆU GỐC TỪ TIKTOK:</b>\n"
+                   f"<code>{raw_dict[:1500]}</code>\n\n"
+                   f"<i>👆 Hãy copy đoạn mã tiếng Anh loằng ngoằng ở trên gửi cho tôi!</i>")
             send_tele(msg)
         except Exception as e:
-            send_tele(f"⚠️ <b>[LỖI ĐỌC RƯƠNG]:</b> Không phân tích được rương tại @{clean_name}. Lỗi: {str(e)}")
+            send_tele(f"⚠️ Lỗi trích xuất dữ liệu: {e}")
 
     try:
         await client.start()
     except Exception as e:
         ACTIVE_CLIENTS.pop(username, None)
-        send_tele(f"❌ <b>Mất kết nối với:</b> @{clean_name} (Có thể do kênh đã tắt Live hoặc bị chặn IP)")
+        send_tele(f"❌ <b>Mất kết nối với:</b> @{clean_name}")
 
 # --- QUÉT LỆNH TELEGRAM ---
 def tele_worker(loop):
     last_id = 0
-    send_tele("🚀 <b>Hệ thống (BẢN TEST) đã sẵn sàng!</b>\n\n- Nhắn <code>/test</code> để thử tín hiệu báo rương.\n- Nhắn <code>@ten_kenh</code> để bắt đầu săn.\n- Nhắn <code>/list</code> để xem danh sách.")
+    send_tele("🚀 <b>Hệ thống X-Quang đã sẵn sàng!</b>\nNhắn <code>@ten_kenh</code> để quét dữ liệu.")
     
     while True:
         try:
@@ -83,20 +80,10 @@ def tele_worker(loop):
                     if "message" in update and "text" in update["message"]:
                         text = update["message"]["text"].strip()
                         
-                        # Lệnh /test giả lập rương
-                        if text == "/test":
-                            send_tele("🎁 <b>[GIẢ LẬP] PHÁT HIỆN RƯƠNG!</b>\n\n👤 <b>Kênh:</b> @hethong\n💰 <b>Trị giá:</b> 100 Xu / 50 người\n⏳ <b>Chờ:</b> 180s\n🔗 <b>ĐƯỜNG TRUYỀN TELEGRAM HOẠT ĐỘNG TỐT!</b>")
-                            
-                        # Lệnh /list
-                        elif text == "/list":
+                        if text == "/list":
                             names = list(ACTIVE_CLIENTS.keys())
-                            if names:
-                                status = "📝 <b>Danh sách đang theo dõi:</b>\n" + "\n".join([f"• {n}" for n in names])
-                            else:
-                                status = "📝 Hiện tại chưa theo dõi kênh nào."
+                            status = "📝 <b>Danh sách:</b>\n" + "\n".join([f"• {n}" for n in names]) if names else "Trống"
                             send_tele(status)
-                        
-                        # Thêm kênh
                         elif text.startswith("@") or (len(text) > 2 and " " not in text):
                             target = text if text.startswith("@") else f"@{text}"
                             send_tele(f"⏳ Đang kết nối tới {target}...")
@@ -116,5 +103,3 @@ if __name__ == '__main__':
     Thread(target=run_tiktok_loop, args=(tiktok_loop,), daemon=True).start()
     
     tele_worker(tiktok_loop)
-
-
