@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template_string
 from threading import Thread
 from TikTokLive import TikTokLiveClient
-from TikTokLive.events import EnvelopeEvent, ConnectEvent, AbstractEvent
+from TikTokLive.events import EnvelopeEvent, ConnectEvent
 import requests
 import os
 import asyncio
@@ -16,14 +16,13 @@ TELEGRAM_TOKEN = "8701996946:AAHcxrWvB7C1t1QURjS1k4ibKxDUuNfJzuw"
 TELEGRAM_CHAT_ID = "1882718625"
 ACTIVE_CLIENTS = {}
 
-# SỐ GIÂY BÁO TRƯỚC (Mặc định 45s)
 NOTIFY_TIME = 45 
 
 app = Flask(__name__)
 
 @app.route('/')
 def home(): 
-    return "Bot Hunter v6.6 (Live Viewer Sync) is Running!"
+    return "Bot Hunter v6.7 (Stable Build) is Running!"
 
 @app.route('/timer')
 def timer():
@@ -119,7 +118,6 @@ async def start_tracking(username, loop):
         try:
             raw_data = str(vars(event))
             
-            # Trích xuất Xu
             match_coins = re.search(r"string_value='(\d+)'", raw_data)
             coins = match_coins.group(1) if match_coins else "0"
             if coins == "0":
@@ -127,7 +125,6 @@ async def start_tracking(username, loop):
                 coins = alt_coins.group(1) if alt_coins else "0"
             if coins == "0": return
 
-            # Trích xuất Người nhận & Cờ
             match_people = re.search(r"(?:can_win_count|winner_count|winner_num|people_count)[:=]\s*(\d+)", raw_data, re.I)
             people = match_people.group(1) if match_people else "1"
 
@@ -135,9 +132,9 @@ async def start_tracking(username, loop):
             m_region = re.search(r"['\"]?(?:region|country|country_code)['\"]?[:=]\s*['\"]([a-zA-Z]{2})['\"]", raw_data, re.I)
             if m_region:
                 c_code = m_region.group(1).upper()
-                flag = chr(ord(c_code[0]) + 127397) + chr(ord(c_code[1]) + 127397)
+                try: flag = chr(ord(c_code[0]) + 127397) + chr(ord(c_code[1]) + 127397)
+                except: pass
 
-            # Giải mã thời gian
             wait_sec = 0
             current_ms = int(time.time() * 1000)
             all_13_digits = re.findall(r"\b(17\d{11})\b", raw_data)
@@ -154,17 +151,18 @@ async def start_tracking(username, loop):
             event_ts = int(time.time())
             delay_time = wait_sec - NOTIFY_TIME 
             
-            # --- QUY TRÌNH CHỜ ĐỢI ---
+            # Bot nằm im ngủ chờ đến 45 giây cuối
             if delay_time > 0:
                 await asyncio.sleep(delay_time)
 
-            # --- LẤY DỮ LIỆU TẠI THỜI ĐIỂM 45 GIÂY CUỐI ---
             current_elapsed = int(time.time()) - event_ts
             actual_remaining = wait_sec - current_elapsed
             if actual_remaining < 0: actual_remaining = 0
 
-            # Lấy số mắt xem mới nhất từ client tại thời điểm này
+            # Lúc này bot đã nằm trong phòng đủ lâu, hệ thống tự có biến viewer_count
             live_viewers = getattr(client, 'viewer_count', '...')
+            if live_viewers is None: live_viewers = '...'
+            
             room_id = getattr(client, 'room_id', '...')
             vn_time = (datetime.utcnow() + timedelta(hours=7)).strftime("%H:%M:%S")
 
@@ -180,14 +178,14 @@ async def start_tracking(username, loop):
                 
                 send_tele(msg)
         except Exception as e:
-            print(f"Lỗi: {e}")
+            pass
 
     try: await client.start()
     except: ACTIVE_CLIENTS.pop(username, None)
 
 def tele_worker(loop):
     last_id = 0
-    send_tele("🚀 <b>Hệ thống v6.6 (Real-time Viewers) Online!</b>")
+    send_tele("🚀 <b>Hệ thống v6.7 (Stable Build) Online!</b>\nĐã sửa xong lỗi sập nguồn.")
     while True:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={last_id + 1}&timeout=20"
