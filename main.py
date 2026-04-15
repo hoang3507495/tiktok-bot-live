@@ -117,6 +117,16 @@ async def start_tracking(username, loop):
         print(f"📦 [RƯƠNG RƠI] Dữ liệu từ {clean_name}: {raw_data[:250]}...")
         
         try:
+            # --- BẮT ĐẦU ĐOẠN MÃ GIĂNG BẪY ---
+            raw_data = str(vars(event))
+            print("\n" + "="*50)
+            print("🚨 ĐÃ BẮT ĐƯỢC GÓI TIN RƯƠNG MỚI!")
+            print(raw_data) # In trần trụi toàn bộ ruột gan gói tin ra
+            print("="*50 + "\n")
+            # --- KẾT THÚC ĐOẠN MÃ GIĂNG BẪY ---
+            
+            # ... (Các đoạn code tìm xu, tìm người bên dưới giữ nguyên)
+
             # 1. BẮT SỐ XU
             match_coins = re.search(r"string_value='(\d+)'", raw_data)
             coins = match_coins.group(1) if match_coins else "0"
