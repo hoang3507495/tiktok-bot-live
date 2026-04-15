@@ -21,7 +21,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home(): 
-    return "Bot Hunter v6.1 (Anti-Spam) is Running!"
+    return "Bot Hunter v6.2 (Exact Sync) is Running!"
 
 @app.route('/timer')
 def timer():
@@ -31,7 +31,8 @@ def timer():
     coins = request.args.get('c', '...')
     
     elapsed = int(time.time()) - ts
-    remaining = w - elapsed - 2 
+    # ĐÃ GỠ BỎ LỆNH TRỪ 2 GIÂY (- 2) Ở ĐÂY. ĐỒNG BỘ CHÍNH XÁC TUYỆT ĐỐI!
+    remaining = w - elapsed 
     if remaining < 0: remaining = 0
 
     html = """
@@ -109,7 +110,7 @@ async def start_tracking(username, loop, force_time=0):
 
     @client.on(ConnectEvent)
     async def on_connect(event: ConnectEvent):
-        mode_text = f"Ép đếm {force_time}s" if force_time > 0 else "Quét chuẩn 1 tin nhắn duy nhất"
+        mode_text = f"Ép đếm {force_time}s" if force_time > 0 else "Thời gian chuẩn xác tuyệt đối"
         send_tele(f"✅ <b>Đã vào phòng:</b> @{clean_name}\nChế độ: {mode_text}")
 
     @client.on(EnvelopeEvent)
@@ -118,15 +119,15 @@ async def start_tracking(username, loop, force_time=0):
         raw_data = str(vars(event))
         
         try:
-            # BỘ LỌC 1: Bỏ qua ngay lập tức các gói tin lệnh "ẨN" rương
+            # LỌC 1: Bỏ qua lệnh Ẩn rương
             if "ENVELOPE_DISPLAY_HIDE" in raw_data:
                 return
 
-            # Lấy ID của Rương để so sánh
+            # Lấy ID Rương
             match_env_id = re.search(r"envelope_id\s*[:=]\s*['\"]?(\d+)['\"]?", raw_data)
             env_id = match_env_id.group(1) if match_env_id else None
 
-            # BỘ LỌC 2: Nếu rương này đã gửi Tele rồi thì chặn lại ngay
+            # LỌC 2: Chống Spam
             if env_id and env_id in PROCESSED_ENVELOPES:
                 return
 
@@ -137,7 +138,7 @@ async def start_tracking(username, loop, force_time=0):
                 alt_coins = re.search(r"['\"]?(?:coin|score|string_value)['\"]?[:=]\s*['\"]?(\d+)['\"]?", raw_data, re.I)
                 coins = alt_coins.group(1) if alt_coins else "?"
 
-            # BỘ LỌC 3: Nếu vẫn chưa hiện xu, tức là gói tin chưa load xong -> Bỏ qua chờ gói sau
+            # LỌC 3: Chưa load xong xu -> Chờ gói sau
             if coins == "?" or coins == "0":
                 return
 
@@ -175,9 +176,8 @@ async def start_tracking(username, loop, force_time=0):
             actual_remaining = wait_sec - current_elapsed
             if actual_remaining < 0: actual_remaining = 0
 
-            # NẾU TÍNH TOÁN THÀNH CÔNG -> GỬI TIN & LƯU SỔ ĐEN
+            # GỬI TIN & LƯU SỔ ĐEN
             if actual_remaining > 0:
-                # Lưu ID rương vào danh sách đã xử lý (giữ tối đa 50 ID gần nhất cho nhẹ máy)
                 if env_id:
                     PROCESSED_ENVELOPES.append(env_id)
                     if len(PROCESSED_ENVELOPES) > 50:
@@ -199,7 +199,7 @@ def tele_worker(loop):
     last_id = 0
     try: requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset=-1")
     except: pass
-    send_tele(f"🚀 <b>Hệ thống v6.1 (Anti-Spam) Sẵn sàng!</b>\nTừ giờ 1 rương chỉ báo đúng 1 lần.")
+    send_tele(f"🚀 <b>Hệ thống v6.2 (Exact Sync) Sẵn sàng!</b>\nĐã gỡ bỏ khoảng lùi, thời gian đếm ngược chính xác tuyệt đối.")
     while True:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={last_id + 1}&timeout=20"
